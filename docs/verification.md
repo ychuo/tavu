@@ -1,6 +1,75 @@
 # Verification record
 
-Date: 2026-10-17 (Asia/Shanghai). Host: macOS 26.5, arm64; Git 2.50.1 (Apple Git-155). All Git write tests used temporary repositories. Tests did not stage, commit, or push the user's working directory.
+Date: 2026-10-18 (Asia/Shanghai). Host: macOS 26.5, arm64; Git 2.50.1 (Apple Git-155). All Git write tests used temporary repositories. Tests did not stage, commit, or push the user's working directory.
+
+## Review list spacing follow-up
+
+The user's screenshot showed comment text touching its hover background and the scrollbar covering the menu icon. Review rows had zero horizontal padding, and their right-aligned action overlay intersected MyGo's 12-DIP scrollbar hit region. The list now spans the reader panel with symmetric 16-DIP gutters, 8-DIP row padding and action insets, and 6-DIP bottom content padding. Header, composer, other panels, and behavior are unchanged.
+
+- Full `./scripts/check.sh` passed (native views 1.870 s; no-cgo views 1.000 s), including formatting, vet, package tests, MyGo checks, and executable build. `git diff --check` passed.
+- The production-list regression exercises 30 comments at 200 and 400 DIP. It clicks the actual menu button's last pixel, chooses Edit, and checks that only the edit draft opens. The list must not scroll or alter comments, documents, or the new-comment draft. It then drags the outer scrollbar independently and checks that hover never changes the body's width. Temporarily removing only the spacing fix reproduced the menu failure at both widths.
+- Native workbench fixtures with isolated real PTYs passed in 2.017 s. The [hovered list and scrollbar](screenshots/ink-review-spacing.png) and [760 × 560 layout](screenshots/ink-review-spacing-compact.png) were visually inspected. These fixtures use test records and show the actual native controls. They are not captures of the user's running app.
+- Packaging, strict ad-hoc signature verification, and bundled terminal-library diagnostics passed (`libraryLoaded: true`, darwin/arm64). After explicit permission to end the current terminal, the application exited normally and restarted from the new bundle. The [desktop capture](screenshots/ink-review-spacing-desktop.png) confirms the updated list is loaded and all three saved comments remain present. The Review section is left open, with a fresh terminal session. No comments, resolution states, or Git data were changed during this check.
+
+## Review comment list
+
+Completed the scoped list redesign on 2026-10-18, on `codex/ink-workbench`. Comment bodies now lead each flat entry, with muted location metadata below, two-line collapse, and Show more/Show less. Export checkboxes appear in an explicit selection mode. Resolved comments form a collapsible group. Hover and keyboard actions remain overlays. Other workbench areas, the Review header/composer styling, and the saved comment format are unchanged.
+
+- Full `./scripts/check.sh` passed after the final source changes: formatting, vet, native and no-cgo package tests, MyGo checks, and executable build (native views 2.048 s; no-cgo views 0.992 s). `git diff --check` also passed.
+- Native integration tests cover hidden/restored export controls, selected-comment preview, selections retained across file filters and mode changes, resolved grouping and Reopen without changing Seen, edit/delete, hover and keyboard access, and long-comment expansion without altering saved text or opening documents. Location links continue to open the exact saved code excerpt or file-comment context rather than reassigning old comments to current code.
+- A resize regression revealed that reading last-frame text bounds alone delayed Show more until another input. The row now requests a rebuild only when layout supplies a different width. The regression resizes 800 → 200 → 800 → 200 without extra input and verifies updated controls, unchanged data, and no continuous redraw.
+- The final full native workbench fixture with real isolated PTYs passed in 1.464 s. It regenerated wide, compact, and 760 × 560 screenshots. Visual inspection includes the [resting list](screenshots/ink-review-list.png), [selection mode](screenshots/ink-review-selection.png), [expanded comment](screenshots/ink-review-expanded.png), [resolved group](screenshots/ink-review-resolved.png), hover/composer states, and the minimum-size layout. The resolved disclosure was corrected to align with the left edge of the comment bodies. These captures use test review records and native rendering; they do not read or modify the user's saved review.
+- Packaging completed (14.5 MB, darwin/arm64). Strict ad-hoc signature verification and the packaged diagnostics passed, including `libraryLoaded: true` for the bundled terminal library.
+
+After explicit permission to end the current terminal, Tavu exited normally and the new bundle started with a fresh terminal session. Opening the README comparison and Review confirmed that all three saved comments remain present, body text leads each entry, location metadata appears below, and export checkboxes are hidden at rest. The [desktop capture](screenshots/ink-review-list-desktop.png) records this running build. No comment, resolution, Seen, staging, commit, or replacement action was performed. Earlier desktop captures below belong to their corresponding builds; the other new screenshots above are native fixture evidence.
+
+## Review and shell polish
+
+Completed 2026-10-18 on `codex/ink-workbench`. Review actions are compact, unoutlined, and revealed on hover or keyboard focus. The composer shows a focus-only border and a green send action for a valid draft. Settings moved to the upper-right title bar. The footer's full 30-DIP surface now includes the former 4-DIP top gap, centering its contents without changing panel dimensions.
+
+- Full `./scripts/check.sh` passed (native views 2.045 s; no-cgo views 0.992 s), including formatting, vet, all package tests, MyGo checks, and executable build.
+- Existing Review interaction tests passed after adapting their pointer flow to the hover actions. Native Review, layout-ratio, and full workbench fixture checks with real PTYs passed in 2.850 s, including compact and 760 × 560 layouts. They verify Resolve/Reopen, the comment menu, keyboard reachability, preserved drafts, and the upper-right Settings position.
+- Native screenshots were regenerated. [Focused composer](screenshots/ink-review-composer.png) and [hovered comment with an unfocused composer](screenshots/ink-review-hover.png) were visually inspected for border, primary fill, subtle actions, footer centering, and Settings placement. These are isolated fixtures, not captures of the user's running application.
+- Packaging, strict ad-hoc signature verification, and bundled-library diagnostics passed (`libraryLoaded: true`, darwin/arm64). After explicit permission to end the current terminal, the app exited normally and the updated bundle was launched. The actual [desktop capture](screenshots/ink-polish-desktop.png) confirms the upper-right Settings, borderless unfocused composer, and corrected footer. The native fixture verifies filled-send and hover states without adding user comments. The restarted app is left open; no comments, review states, Git staging, or replacement writes were performed in this desktop check.
+
+## Ink workbench
+
+Implemented on `codex/ink-workbench`, preserving the earlier uncommitted Explorer, file-comment, terminal-size, and review-version fixes. Native Go/MyGo views now follow the selected three-panel design. The branch does not introduce a WebView or replace the terminal/diff engines.
+
+- The final complete `./scripts/check.sh` passed: formatting, vet, native and no-cgo tests, MyGo checks, and executable build (native views 1.869 s; no-cgo views 1.333 s).
+- Full views, terminal, and storage race suites passed with `TAVU_TEST_TERMINAL=1` (14.412 s, 4.455 s, and 2.819 s). After the final tab-reveal and code-panel inset changes, focused real-PTY race tests for Ink, integrated Review, reader/terminal tab reveal, workbench layout, and pane dragging passed in 7.200 s.
+- The final native fixture run regenerated [Files/Review](screenshots/ink-files.png), [Search/Replace](screenshots/ink-search.png), [Git](screenshots/ink-git.png), [compact Files](screenshots/ink-compact.png), [compact Git](screenshots/ink-compact-git.png), and [minimum-size Git](screenshots/ink-minimum-git.png). These use isolated runnable Go content, real MyGo widgets, and real PTYs. No user source files, Git status, review records, or preferences are written by these fixtures.
+- Responsive tests exercise wide → minimum-size → wide transitions, sidebar preference restoration, separate arrangement ratios, automatic fallback from horizontal at insufficient width, visible reader/comment controls, and preserved terminal/document instances. Extreme-window drag and float-bound regressions verify that saved proportions do not reset. Storage tests cover old-setting defaults and round-trip persistence. Search/commit native tests retain 200/280/480-DIP sidebar coverage. Tab tests cover selection, closing, width changes, manual scrolling, and live terminal sessions.
+- The final 14.5 MB darwin/arm64 package passed strict ad-hoc signature verification and bundled-library diagnostics (`libraryLoaded: true`, Go 1.27.1, MyGo v0.5.5). It was restarted after explicit permission to end the verification terminal, and is running the final build.
+- Desktop checks opened independent file tabs and a Git comparison, focused the whole-file Review composer, switched to Stacked and back to Automatic while retaining the same terminal, and opened an inline replacement preview from Search. Cmd+W closed that preview without closing the other files. No replacement was applied. The final restart verified that opening a fifth tab scrolls its full selected tab and close button into view. The final [desktop capture](screenshots/ink-desktop.png) shows Inline Diff with Review beneath it and the terminal on the right. The [stacked capture](screenshots/ink-desktop-stacked.png) predates only the final tab-reveal and code-corner polish. The purple upper-left indicator is macOS screen-capture UI, not a Tavu control.
+
+No project staging, commit, push, replacement, comment save, or review-version capture was performed during this desktop pass. The app remains open for inspection. Automated fixtures establish additional behavior; they are not claims of manual verification of every workflow. Platform-specific IME/trackpad behavior, other operating systems, and distribution notarization remain outside this pass.
+
+Visual comparison uses the selected raster references and their written handoff. The native interface keeps the specified compact DIP typography, real diff annotations, and standard macOS controls; it is not a claim of pixel-identical raster reproduction. Older sections below describe their own builds only.
+
+## Explorer tabs, file comments, and review versions
+
+Completed 2026-10-18. Explorer clicks retain working-file tabs and reuse the same path. Quick Open/Search keep preview behavior. Add Comment focuses a file composer without a selection, or a line composer with selected lines; the scope is explicit and switchable. File comments retain the comparison fingerprint, export without invented line numbers, and do not create gutter annotations. The current Git list no longer exposes snapshot segments; Review Versions holds optional save/open actions, and saving preserves navigation.
+
+- Full `./scripts/check.sh` passed: formatting, vet, native/no-cgo tests, MyGo checks, and build (native views 2.671 s; no-cgo views 2.031 s).
+- Review, views, storage, and terminal race tests passed (views 7.662 s). Additional close-draft and edited-history regressions passed after their tests were added. The real-PTY terminal suite passed with `TAVU_TEST_TERMINAL=1` and the race detector in 3.481 s.
+- Tests cover multiple actual file reads, duplicate opens, stale asynchronous completion, preview promotion, file/line scope, real native input focus and saving, deselection rejection, file-comment export/serialization, closing a draft's tab, edited history refresh, version-menu enablement, and saving without navigation.
+- Packaging, strict ad-hoc signature verification, and bundled terminal-library diagnostics passed (`libraryLoaded: true`).
+- The user's saved terminal preference was explicitly decreased from 13 to 12 through Settings. After restarting the bundle, Settings still showed 12. Other valid saved preferences are not migrated; 12 is the new default.
+- In the actual relaunched app, `main.go` and `mygo.json` stayed open together. Opening the `review.go` comparison and Add Comment focused the whole-file input. The simplified version menu opened the existing saved review and returned to current changes without replacing the reader. No comments, saved review captures, staging, commits, or replacements were written during this desktop pass. Comment persistence and save behavior were tested in isolated fixtures.
+
+The inspected desktop capture is `/private/tmp/tavu-file-comments-desktop.jpg`. It is temporary local evidence. The app is running the new build, on current changes with the file-comment composer available. This pass did not recheck other platforms or distribution notarization.
+
+## Left rail only restoration
+
+Completed 2026-10-18. At the user's direction, the preceding uncommitted workbench redesign was removed except for the persistent icon-only activity rail. Reader/Comments/source-control/commit behavior and the original layout/storage model are restored to the previous committed version. `view.go` contains the remaining functional changes: the rail, removal of duplicate navigation/settings controls, and consistent available-width calculations.
+
+- Full `./scripts/check.sh` passed (native views 2.366 s, no-cgo views 1.495 s), including formatting, vet, tests, MyGo checks, and build.
+- Existing review, responsive-control, split-layout, and persistent-session native tests passed with `TAVU_TEST_TERMINAL=1` and the race detector in 4.268 s. They exercised wide/narrow/wide resize with live PTYs and preserved document/terminal instances.
+- Native fixture captures at 1380 × 920 and 760 × 560 were visually inspected: [wide](screenshots/tavu-rail-restored-wide.png), [narrow](screenshots/tavu-rail-restored-small.png). These use test content and isolated terminals, not the user's repository.
+- Packaging produced a 14.4 MB darwin/arm64 `Tavu.app`; strict ad-hoc signing and bundled native-library loading passed (`libraryLoaded: true`). `git diff --check` passed.
+
+The user continued interacting with the preceding preview while this build was prepared. Its restart was therefore deferred; no manual desktop pass of the restored build is claimed. The original application and preview sessions were left running. No project staging, commit, push, or replacement was performed. The rejected uncommitted redesign was backed up outside the repository before restoring its files.
 
 ## Changes actions overlay text on hover
 

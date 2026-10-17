@@ -1,6 +1,46 @@
 # Tavu design QA
 
-Date: 2026-10-17. Current implementation: **scoped search replacements, result removal, latest-operation undo, and separated search toggles**. Completed validation and its scope are recorded in [verification](docs/verification.md).
+Date: 2026-10-18. Current implementation: **Ink workbench**, based on the selected Files/Review, Search/Replace, Git, and compact design screens. The earlier rail-only restoration below is historical. Functional and visual evidence are recorded in [verification](docs/verification.md#ink-workbench).
+
+## Review comment list
+
+Spacing follow-up: comment backgrounds now have 8-DIP inner side padding. Symmetric 16-DIP list gutters reserve a separate scrollbar area, and action buttons are inset from the row edge. A 6-DIP content-end gap separates the final comment from the composer when scrolled to the bottom. Native [hover/scrollbar](docs/screenshots/ink-review-spacing.png) and [minimum-size](docs/screenshots/ink-review-spacing-compact.png) fixtures verify the spacing. A pointer regression at 200 and 400 DIP confirms the button's rightmost edge opens its menu while the outer scrollbar remains independently draggable. This follow-up has been packaged and restarted after explicit permission to end the current terminal. The [running application](docs/screenshots/ink-review-spacing-desktop.png) shows the updated list with all three existing comments retained.
+
+The comment list now uses a flat, compact reading hierarchy: primary body text with muted file/line context underneath. Bodies wrap naturally, initially show two lines, and offer Show more/Show less when needed. Saved text is never shortened. The location link still opens the comment's saved original context.
+
+Export checkboxes appear only after Select Comments. The header's existing copy action then opens Preview Selected; Done returns to reading while retaining the selection across files. Resolved comments are muted and grouped behind a left-aligned disclosure. Resolve/Reopen and Edit/Delete remain hover- or keyboard-revealed overlays, leaving the text its full resting width. The header and composer styling, surrounding panels, palette, and layout controls are unchanged.
+
+Native fixtures show the [resting list](docs/screenshots/ink-review-list.png), [selection mode](docs/screenshots/ink-review-selection.png), [expanded comment](docs/screenshots/ink-review-expanded.png), and [resolved group](docs/screenshots/ink-review-resolved.png). These use isolated review records and real native widgets. Resize regression coverage verifies that the expansion control updates without additional pointer or keyboard input. Following explicit restart permission, the [running application](docs/screenshots/ink-review-list-desktop.png) was inspected with the three existing README comments intact and the new hierarchy visible. Older desktop captures below show earlier builds. See the [current verification record](docs/verification.md#review-comment-list).
+
+## Ink workbench
+
+The shell, title bar, footer, and splitter gaps share one near-black surface. Navigation, the reader with Review, and the terminal use three matching charcoal panels. Files/Search/Git icons are integrated into the navigation panel; Settings is at the upper right of the title bar. File tabs have a solid green selection and terminal tabs a blue-gray selection, with the same size, close action, and shape. Permanent pane and toolbar rules are removed; native splitters retain hover, keyboard, and drag behavior.
+
+The reader stays left of the terminal at wide sizes. At narrow sizes the terminal moves below the reader and its Review section. Automatic, Side by Side, and Stacked arrangements are available, with separate saved horizontal and stacked proportions. Temporary width clamps preserve the preferred sidebar width. Review defaults to comments on the current file, retains an All Files option and global export selection, and keeps Seen in its header even when collapsed. Search/replacement, file comments, version history, Git actions, native terminal rendering, and independent file tabs remain available.
+
+Native fixture evidence: [Files/Review](docs/screenshots/ink-files.png), [Search/Replace](docs/screenshots/ink-search.png), [Git](docs/screenshots/ink-git.png), and [compact](docs/screenshots/ink-compact.png). These render real MyGo widgets with isolated sample content and PTYs, not screenshots of the user's repository. They were compared with the four selected reference images. Production typography follows the handoff's 13-DIP interface/code and 12-point terminal specification rather than enlarging it to match the raster mockup's text. Native diff line numbering, inline comments, and accessible controls are retained.
+
+Validation is complete: full project checks, real-PTY race tests, large-window splitter regressions, packaging, and final desktop inspection passed. The final [running application](docs/screenshots/ink-desktop.png) shows the integrated Review and the fully revealed fifth file tab. The [stacked desktop view](docs/screenshots/ink-desktop-stacked.png) records the earlier manual-layout check; it predates the final tab-reveal and code-corner polish.
+
+Visual QA corrected search-scope summaries, replacement snippet spacing and +/− markers, terminal side insets, comment-menu hover/keyboard behavior, code-panel bottom insets, and selected-tab visibility. Primary text is 13 DIP, metadata 12, and the Review title 14. Separate split proportions survive resizing and extreme-window dragging. The final app was restarted with the user's permission and is left running. Detailed evidence and limits are in [verification](docs/verification.md#ink-workbench).
+
+## Review and shell polish
+
+Resolve/Reopen no longer has a circular outline. Its compact action and the comment menu appear on row hover or keyboard focus; resolved status remains readable. The comment input is borderless at rest and outlined only when focused. A sendable draft uses the green primary action fill. [Focused composer](docs/screenshots/ink-review-composer.png) and [unfocused composer with a hovered comment](docs/screenshots/ink-review-hover.png) show these native states without saving a comment.
+
+The footer now owns the entire 30-DIP strip below the panels, removing the extra top gap that made its text look low. Settings has moved to the upper-right title bar and stays available when the sidebar is hidden. Full checks, native interaction/layout fixtures, and packaging passed. After explicit permission to end the current terminal, the app was restarted and the [updated desktop](docs/screenshots/ink-polish-desktop.png) was inspected; it is left running.
+
+## Previous Explorer and review simplification
+
+Explorer now keeps each clicked file open. Add Comment starts an explicitly labeled file or line composer and focuses it; entire-file comments retain version identity without fake line numbers. The terminal default and this user's saved size are now 12 points. Source Control defaults to current changes, with optional Save Review Version/Open Saved Review in a secondary menu and a compact return action when viewing saved content. Full checks, race tests, real-PTY tests, packaging, and an actual desktop inspection passed; the latest bundle is running.
+
+## Left rail only restoration
+
+The user preferred the previous interface apart from the left activity rail. The uncommitted integrated Review, new source toolbar and commit placement, manual orientation controls, layout persistence changes, and native review-line adapter were reverted. The previous source-control, reader, Comments, tab, default split, and responsive behavior are restored. The rail remains visible when the sidebar is hidden and is the sole location for Settings; its 52-DIP width is included in available-space calculations.
+
+The [wide native fixture](docs/screenshots/tavu-rail-restored-wide.png) and [narrow native fixture](docs/screenshots/tavu-rail-restored-small.png) were inspected. Full checks, targeted real-PTY layout tests with the race detector, packaging, strict signature verification, and bundled-library diagnostics passed. At that stage the running preview was left untouched while the user tested it; the application has since been relaunched for the fixes above.
+
+## Previous search refinements
 
 Changes rows now reveal Stage/Unstage over the text on hover or keyboard focus, without reserving text space or covering the persistent status and Seen indicators; selection alone does not keep the action visible.
 

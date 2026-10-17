@@ -27,11 +27,13 @@ const (
 )
 
 type Layout struct {
-	Mode           string  `json:"mode"`
-	SplitTerminals bool    `json:"splitTerminals"`
-	SidebarVisible bool    `json:"sidebarVisible"`
-	SidebarWidth   float32 `json:"sidebarWidth"`
-	TerminalRatio  float32 `json:"terminalRatio"`
+	Mode               string  `json:"mode"`
+	SplitTerminals     bool    `json:"splitTerminals"`
+	SidebarVisible     bool    `json:"sidebarVisible"`
+	SidebarWidth       float32 `json:"sidebarWidth"`
+	TerminalRatio      float32 `json:"terminalRatio"`
+	StackedReaderRatio float32 `json:"stackedReaderRatio,omitempty"`
+	Arrangement        string  `json:"arrangement,omitempty"`
 }
 
 type Settings struct {
@@ -46,12 +48,12 @@ type Settings struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{FontSize: 13, Layout: Layout{Mode: "split", SidebarVisible: true, SidebarWidth: 280, TerminalRatio: .48}, MaxSnapshotBytes: DefaultMaxSnapshotBytes, MaxSnapshots: DefaultMaxSnapshots}
+	return Settings{FontSize: 12, Layout: Layout{Mode: "split", SidebarVisible: true, SidebarWidth: 280, TerminalRatio: .48, StackedReaderRatio: .66, Arrangement: "auto"}, MaxSnapshotBytes: DefaultMaxSnapshotBytes, MaxSnapshots: DefaultMaxSnapshots}
 }
 
 func (s *Settings) normalize() {
 	if s.FontSize < 8 || s.FontSize > 32 {
-		s.FontSize = 13
+		s.FontSize = 12
 	}
 	s.FontFamily = strings.TrimSpace(s.FontFamily)
 	if s.Layout.Mode != "split" && s.Layout.Mode != "terminal" && s.Layout.Mode != "review" {
@@ -59,6 +61,12 @@ func (s *Settings) normalize() {
 	}
 	if s.Layout.TerminalRatio < .15 || s.Layout.TerminalRatio > .85 {
 		s.Layout.TerminalRatio = .48
+	}
+	if s.Layout.StackedReaderRatio < .25 || s.Layout.StackedReaderRatio > .85 {
+		s.Layout.StackedReaderRatio = .66
+	}
+	if s.Layout.Arrangement != "horizontal" && s.Layout.Arrangement != "vertical" {
+		s.Layout.Arrangement = "auto"
 	}
 	if s.Layout.SidebarWidth < 200 || s.Layout.SidebarWidth > 480 {
 		s.Layout.SidebarWidth = 280

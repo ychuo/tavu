@@ -51,7 +51,7 @@ type Manager struct {
 
 func NewManager(config Config) *Manager {
 	if config.FontSize < 8 || config.FontSize > 32 {
-		config.FontSize = 13
+		config.FontSize = 12
 	}
 	config.FontFamily = strings.TrimSpace(config.FontFamily)
 	return &Manager{config: config}

@@ -142,7 +142,8 @@ func TestRealTerminalEnvironmentAndColorPixels(t *testing.T) {
 	session.Term.Send([]byte("printf '\\033[2J\\033[H\\033[41m        \\033[0m 16\\n\\033[48;5;202m        \\033[0m 256\\n\\033[48;2;17;123;231m        \\033[0m RGB\\nSYMBOLS: \ue0a0 branch  \ue627 Go\\nCOLOR_PIXELS_DONE\\n'\n"))
 	waitForOutput(t, tt, session.Term, "\nCOLOR_PIXELS_DONE")
 	im := tt.Image()
-	for _, want := range []color.RGBA{{255, 107, 112, 255}, {255, 95, 0, 255}, {17, 123, 231, 255}} {
+	red := forestTheme().Palette[1]
+	for _, want := range []color.RGBA{{red.R, red.G, red.B, red.A}, {255, 95, 0, 255}, {17, 123, 231, 255}} {
 		count := 0
 		for y := im.Bounds().Min.Y; y < im.Bounds().Max.Y; y++ {
 			for x := im.Bounds().Min.X; x < im.Bounds().Max.X; x++ {

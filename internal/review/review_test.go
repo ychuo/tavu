@@ -174,6 +174,112 @@ func TestCommentRejectsInvalidRangeSideAndBody(t *testing.T) {
 		t.Fatal("invalid additions modified state")
 	}
 }
+
+func TestFileCommentKeepsVersionWithoutLineOrFileCopy(t *testing.T) {
+	s := NewState()
+	c := comparison()
+	c.OldPath = "before.go"
+	fingerprint := c.Fingerprint()
+	comment, err := s.AddFileComment("captured", c, "Consider splitting this file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !comment.IsFileComment() || comment.ID == "" || comment.SnapshotID != "captured" || comment.Path != c.Path || comment.OldPath != c.OldPath || comment.Kind != c.Kind || comment.Fingerprint != fingerprint {
+		t.Fatalf("file comparison identity lost: %+v", comment)
+	}
+	if comment.Side != "" || comment.StartLine != 0 || comment.EndLine != 0 || comment.Code != nil {
+		t.Fatalf("file comment invented a line selection: %+v", comment)
+	}
+	if comment.BasedOnOldVersion(c.Clone()) {
+		t.Fatal("cloned comparison is a different version")
+	}
+	c.New[0] = 'x'
+	if !s.Comments[0].BasedOnOldVersion(c) || s.Comments[0].Fingerprint != fingerprint || s.Comments[0].Code != nil {
+		t.Fatal("changing file bytes changed the captured comment")
+	}
+	comment.Body = "not stored"
+	if s.Comments[0].Body != "Consider splitting this file" {
+		t.Fatal("returned comment aliases state")
+	}
+	if err := s.EditComment(comment.ID, "Use a separate module"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetResolved(comment.ID, true); err != nil || len(s.Unresolved()) != 0 {
+		t.Fatalf("file comment resolution failed: %v", err)
+	}
+	if err := s.SetResolved(comment.ID, false); err != nil || len(s.Unresolved()) != 1 {
+		t.Fatalf("file comment reopen failed: %v", err)
+	}
+	if s.Unresolved()[0].Scope != FileScope || s.Unresolved()[0].Body != "Use a separate module" {
+		t.Fatal("file comment editing lost its scope or body")
+	}
+}
+
+func TestFileCommentAcceptsNonTextComparisonsAndRejectsEmptyBody(t *testing.T) {
+	s := NewState()
+	c := comparison()
+	for _, body := range []string{"", " \n\t"} {
+		if _, err := s.AddFileComment("s", c, body); err == nil {
+			t.Fatal("empty file comment accepted")
+		}
+	}
+	if len(s.Comments) != 0 {
+		t.Fatal("invalid additions modified state")
+	}
+	for _, raw := range [][]byte{nil, {0, 1, 2}, {0xff, 0xfe}} {
+		c.New = raw
+		if _, err := s.AddFileComment("s", c, "Review the file"); err != nil {
+			t.Fatalf("file comments require text lines: %v", err)
+		}
+	}
+}
+
+func TestFileCommentExportAndJSONCompatibility(t *testing.T) {
+	s := NewState()
+	comment, err := s.AddFileComment("s", comparison(), "Consider the file structure\nKeep the public API")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"\"side\"", "\"startLine\"", "\"endLine\"", "\"code\""} {
+		if strings.Contains(string(encoded), field) {
+			t.Fatalf("file comment stores inapplicable field %s: %s", field, encoded)
+		}
+	}
+	var restored State
+	if err := json.Unmarshal(encoded, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Comments) != 1 || !restored.Comments[0].IsFileComment() || restored.Comments[0].Fingerprint != comment.Fingerprint {
+		t.Fatalf("file scope or version lost after JSON: %+v", restored.Comments)
+	}
+	out := Export("project", restored.Unresolved())
+	for _, want := range []string{"1. File: 目录/a.go", "Version and location: Changes · File comment · ", "   Comment:\n   Consider the file structure\n   Keep the public API"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"lines ", "0–0", "Code:", "```"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("file comment export includes %q: %s", unwanted, out)
+		}
+	}
+	var legacy Comment
+	if err := json.Unmarshal([]byte(`{"id":"old","snapshotId":"s","path":"old.go","kind":"unstaged","fingerprint":"original","side":"old","startLine":2,"endLine":3,"code":"YSgpCmIoKQo=","body":"Keep these calls"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.IsFileComment() || legacy.Scope != "" {
+		t.Fatalf("legacy line comment converted to file scope: %+v", legacy)
+	}
+	out = Export("project", []Comment{comment, legacy})
+	if !strings.Contains(out, "2. File: old.go") || !strings.Contains(out, "Changes · old · lines 2–3 · original") || !strings.Contains(out, "   a()\n   b()\n") {
+		t.Fatalf("legacy line export changed: %s", out)
+	}
+}
+
 func TestExportOnlySelectedAndBacktickSafe(t *testing.T) {
 	s := NewState()
 	c := comparison()

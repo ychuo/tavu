@@ -137,6 +137,12 @@ func (a *App) openProject(path string) {
 			a.snapshotCheckNotice = ""
 			a.documents = nil
 			a.selectedDoc = ""
+			a.hasRange = false
+			a.commentFile = false
+			a.commentFocus = false
+			a.commentsSelecting, a.commentsResolvedOpen = false, false
+			a.expandedComments = nil
+			a.commentList = ui.ListState{}
 			a.trees = map[string][]files.Entry{".": entries}
 			a.expanded = map[string]bool{}
 			a.treeLoading = map[string]bool{}
@@ -335,7 +341,7 @@ func (a *App) updateVersionState(status gitrepo.Status, latest map[string]string
 			a.changed = true
 		}
 		if unknown {
-			a.snapshotCheckNotice = "Snapshot check unavailable"
+			a.snapshotCheckNotice = "Review version check unavailable"
 		}
 	}
 	for _, d := range a.documents {
@@ -518,37 +524,9 @@ func (a *App) openFile(path string, line int) {
 }
 
 func (a *App) openFileReplacing(path string, line int, replaceID string) {
-	if a.fs == nil || a.loading {
-		return
-	}
-	a.cancelDocumentLoad()
-	ctx, cancel := context.WithTimeout(a.projectCtx, 10*time.Second)
-	a.loadCancel = cancel
-	id := a.loadID
-	fs := a.fs
-	go func() {
-		defer cancel()
-		f, err := fs.Read(ctx, path)
-		a.update(func() {
-			a.completeDocumentLoad(id, func() {
-				if err != nil {
-					a.fail(err)
-					return
-				}
-				d := &document{ID: "disk:" + f.Path + ":" + f.Hash, Path: f.Path, Label: filepath.Base(path), Notice: "Working file · Read-only", DiskHash: f.Hash, Preview: true, Code: newCode(path, f.Raw)}
-				if line > 0 {
-					pos := d.Code.Buffer.Offset(editor.Pos{Line: line - 1})
-					d.Code.Select(pos, pos)
-				}
-				if replaceID != "" {
-					a.replaceDocument(replaceID, d)
-				} else {
-					a.addDocument(d)
-				}
-			})
-		})
-	}()
+	a.openFileWithMode(path, line, replaceID, true)
 }
+
 func comparisonOf(c gitrepo.Comparison) review.Comparison {
 	if c.HEAD == "" {
 		c.HEAD = review.NoHEAD
@@ -608,8 +586,8 @@ func (a *App) showComparisonReplacing(c review.Comparison, snapshotID, replaceID
 	fp := c.Fingerprint()
 	d := &document{ID: "diff:" + snapshotID + ":" + fp, Path: c.Path, Label: filepath.Base(c.Path) + " · " + kindLabel(c.Kind), Comparison: &c, SnapshotID: snapshotID, Notice: kindLabel(c.Kind) + " · Loaded comparison"}
 	if snapshotID != "" {
-		d.Notice = kindLabel(c.Kind) + " · Snapshot " + short(snapshotID)
-		d.Label += " · Snapshot"
+		d.Notice = kindLabel(c.Kind) + " · Saved Review " + short(snapshotID)
+		d.Label += " · Saved Review"
 	}
 	oldErr, newErr := files.ValidateText(c.Old), files.ValidateText(c.New)
 	if oldErr != nil || newErr != nil {
@@ -623,6 +601,9 @@ func (a *App) showComparisonReplacing(c review.Comparison, snapshotID, replaceID
 			a.selectedRange = r
 			a.hasRange = true
 			a.commentsOpen = true
+			a.commentFile = false
+			a.commentFocus = true
+			a.readerFocus = false
 			d.Diff.SetSelectedLines(r, true)
 		}
 	}
@@ -705,21 +686,23 @@ func (a *App) startReview() {
 				a.fail(err)
 				return
 			}
-			a.snapshot = &snap
-			a.changed = false
-			a.snapshotCheckNotice = ""
-			a.state.SnapshotID = snap.ID
-			a.reviewing = true
-			a.reviewTab = 1
-			a.saveReview()
-			a.message = "Snapshot saved. External edits won’t update it."
-			if len(snap.Comparisons) > 0 {
-				a.showComparison(snap.Comparisons[0], snap.ID)
-			}
-			a.refresh()
+			a.applySavedReview(snap)
 		})
 	}()
 }
+
+// Saving a version never navigates away from the document being reviewed.
+func (a *App) applySavedReview(snap review.Snapshot) {
+	a.snapshot = &snap
+	a.changed = false
+	a.snapshotCheckNotice = ""
+	a.state.SnapshotID = snap.ID
+	a.reviewing = true
+	a.saveReview()
+	a.message = "Review version saved"
+	a.refresh()
+}
+
 func (a *App) markSeen() {
 	if d := a.current(); d != nil && d.Comparison != nil {
 		fp := d.Comparison.Fingerprint()
@@ -731,25 +714,47 @@ func (a *App) markSeen() {
 		a.saveReview()
 	}
 }
+func (a *App) beginComment() {
+	d := a.current()
+	if d == nil || d.Comparison == nil || d.Replacement {
+		return
+	}
+	a.hasRange = false
+	if d.Diff != nil {
+		a.selectedRange, a.hasRange = d.Diff.SelectedLines()
+	}
+	a.commentFile = !a.hasRange
+	a.commentsOpen = true
+	a.commentFocus = true
+	a.readerFocus = false
+}
+
 func (a *App) addComment() {
 	d := a.current()
-	if d == nil || d.Comparison == nil || d.Diff == nil {
+	if d == nil || d.Comparison == nil || d.Replacement {
 		a.hasRange = false
 		return
 	}
-	// A second click on a selected gutter line clears MyGo's selection without
-	// an OnLineSelection callback. Read the component's current selection at
-	// save time; a cached range must never anchor a new comment.
-	a.selectedRange, a.hasRange = d.Diff.SelectedLines()
-	if !a.hasRange {
-		a.message = "Select lines to comment."
-		return
+	var err error
+	if a.commentFile {
+		_, err = a.state.Review.AddFileComment(d.SnapshotID, *d.Comparison, a.commentDraft)
+	} else {
+		// A second gutter click may clear selection without a callback. Never
+		// save a cached range or silently turn a line draft into a file comment.
+		a.hasRange = false
+		if d.Diff != nil {
+			a.selectedRange, a.hasRange = d.Diff.SelectedLines()
+		}
+		if !a.hasRange {
+			a.message = "Select lines to comment."
+			return
+		}
+		side := review.NewSide
+		if a.selectedRange.Side == editor.DiffOld {
+			side = review.OldSide
+		}
+		_, err = a.state.Review.AddComment(d.SnapshotID, *d.Comparison, side, a.selectedRange.Start+1, a.selectedRange.End+1, a.commentDraft)
 	}
-	side := review.NewSide
-	if a.selectedRange.Side == editor.DiffOld {
-		side = review.OldSide
-	}
-	_, err := a.state.Review.AddComment(d.SnapshotID, *d.Comparison, side, a.selectedRange.Start+1, a.selectedRange.End+1, a.commentDraft)
 	if err != nil {
 		a.fail(err)
 		return
@@ -759,13 +764,14 @@ func (a *App) addComment() {
 	a.decorate(d)
 	a.message = "Comment saved"
 }
+
 func (a *App) decorate(d *document) {
 	if d == nil || d.Diff == nil || d.Comparison == nil {
 		return
 	}
 	d.Diff.Annotations = nil
 	for _, cm := range a.state.Review.Comments {
-		if cm.Fingerprint == d.Comparison.Fingerprint() {
+		if !cm.IsFileComment() && cm.Fingerprint == d.Comparison.Fingerprint() {
 			side := editor.DiffNew
 			if cm.Side == review.OldSide {
 				side = editor.DiffOld
@@ -865,7 +871,7 @@ func (a *App) clearHistory() {
 				a.snapshotCheckNotice = ""
 				a.state.SnapshotID = ""
 				a.reviewTab = 0
-				a.message = "Snapshots cleared. Comment code kept."
+				a.message = "Saved reviews cleared. Comments kept."
 				a.saveReview()
 			}
 		})

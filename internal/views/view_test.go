@@ -47,6 +47,7 @@ func TestNativeReviewWorkflow(t *testing.T) {
 	if cm.StartLine != 3 || string(cm.Code) != "// 新代码🙂\n" {
 		t.Fatalf("wrong original code: %+v", cm)
 	}
+	click(t, tt, "Select Comments")
 	click(t, tt, "Export "+cm.ID)
 	click(t, tt, "Preview Selected")
 	click(t, tt, "Copy Comments")
@@ -54,10 +55,15 @@ func TestNativeReviewWorkflow(t *testing.T) {
 		t.Fatalf("clipboard %q", tt.Clipboard())
 	}
 	click(t, tt, "Close Preview")
+	body, _ := tt.Find("Comment Body " + cm.ID)
+	tt.Move(body.X+10, body.Y+body.H/2)
 	click(t, tt, "Resolve")
 	if !a.state.Review.Comments[0].Resolved {
 		t.Fatal("not resolved")
 	}
+	click(t, tt, "Resolved Comments")
+	body, _ = tt.Find("Comment Body " + cm.ID)
+	tt.Move(body.X+10, body.Y+body.H/2)
 	click(t, tt, "Reopen")
 	if a.state.Review.Comments[0].Resolved {
 		t.Fatal("not reopened")
@@ -108,6 +114,7 @@ func TestNativePreviewIncludesOnlySelectedComments(t *testing.T) {
 	a.commentsOpen = true
 	tt := ui.NewTester(a.View, 1380, 920)
 	tt.SetClipboard("Existing clipboard text")
+	click(t, tt, "Select Comments")
 	click(t, tt, "Preview Selected")
 	if !a.previewOpen || !strings.Contains(a.preview, first.Body) || strings.Contains(a.preview, second.Body) {
 		t.Fatalf("selected preview includes the wrong comments: %q", a.preview)

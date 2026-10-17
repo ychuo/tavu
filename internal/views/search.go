@@ -187,10 +187,10 @@ func (a *App) finishSearch(id, gen uint64, result files.SearchResult, err error)
 	}
 }
 
-// Search fields share a focus border and reserve a separate trailing action
-// area, so typing and clicking a scope/action button never compete for space.
+// Filled fields keep the sidebar quiet until an input has focus. The trailing
+// action area stays separate from the editable text at every sidebar width.
 func searchField(c *ui.Context) ui.Element {
-	row := ui.Row(c).FillWidth().Height(30).Padding(2).Gap(0).AlignItems(ui.Center).Background(panel).Border(1, line).Radius(4)
+	row := ui.Row(c).FillWidth().Height(34).Padding(2).Gap(0).AlignItems(ui.Center).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6)
 	if row.FocusWithin() {
 		row.BorderColor(accent.Alpha(.65))
 	}
@@ -198,14 +198,14 @@ func searchField(c *ui.Context) ui.Element {
 }
 
 func searchInput(c *ui.Context, value *string, label, placeholder string) ui.Element {
-	return ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).FontSize(12).Height(26).Padding(0, 5).Grow(1).MinWidth(0)
+	return ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).FontSize(13).Height(28).Padding(0, 5).Grow(1).MinWidth(0)
 }
 
 func (a *App) searchView(c *ui.Context) {
 	if a.searchOpenFiles && !a.busy && !a.workspaceModalOpen() && a.searchOpenPaths != strings.Join(a.searchOptions().Paths, "\x00") {
 		a.runSearch(false)
 	}
-	ui.Column(c).Padding(6, 8).Gap(6).FillWidth().Children(func() {
+	ui.Column(c).Padding(8, 8).Gap(8).FillWidth().Children(func() {
 		ui.Row(c).FillWidth().Gap(2).AlignItems(ui.Center).Children(func() {
 			chevron := "chevron-right"
 			if a.replaceExpanded {
@@ -246,7 +246,7 @@ func (a *App) searchView(c *ui.Context) {
 		})
 		ui.Row(c).FillWidth().Padding(0, 0, 0, 22).Gap(2).AlignItems(ui.Center).Children(func() {
 			label := a.searchSummary()
-			ui.Text(c, label).FontSize(11).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(label)
+			ui.Text(c, label).FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(label)
 			if len(a.matches) > 0 {
 				icon, label := "list-collapse", "Collapse Results"
 				collapsed := a.allSearchResultsCollapsed()
@@ -266,7 +266,7 @@ func (a *App) searchView(c *ui.Context) {
 		})
 		if a.searchDetails {
 			ui.Column(c).FillWidth().Padding(0, 0, 0, 22).Gap(6).Children(func() {
-				ui.Text(c, "Files to include").FontSize(11)
+				ui.Text(c, "Files to include").FontSize(12)
 				searchField(c.Key("include-input-row")).Children(func() {
 					input := searchInput(c, &a.searchInclude, "Files to include", "e.g. *.go, src/**")
 					if input.Changed() || input.Submitted() {
@@ -275,7 +275,7 @@ func (a *App) searchView(c *ui.Context) {
 					toolToggle(c, "columns-2", "Open Files Only", a.searchOpenFiles).Size(24, 24).
 						Description("Search disk versions of open files").OnClick(func() { a.searchOpenFiles = !a.searchOpenFiles; a.runSearch(true) })
 				})
-				ui.Text(c, "Files to exclude").FontSize(11)
+				ui.Text(c, "Files to exclude").FontSize(12)
 				searchField(c.Key("exclude-input-row")).Children(func() {
 					input := searchInput(c, &a.searchExclude, "Files to exclude", "e.g. *_test.go")
 					if input.Changed() || input.Submitted() {
@@ -287,16 +287,16 @@ func (a *App) searchView(c *ui.Context) {
 		}
 		ui.Column(c).FillWidth().Padding(0, 0, 0, 22).Gap(4).Children(func() {
 			if scope := a.searchScopeLabel(); scope != "" {
-				ui.Text(c, scope).FontSize(10).TextColor(c.Theme().TextMuted).FillWidth().SingleLine().Tooltip(scope)
+				ui.Text(c, scope).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth().SingleLine().Tooltip(scope)
 			}
 			if a.searchNotice != "" {
-				ui.Text(c, a.searchNotice).FontSize(11).TextColor(c.Theme().Warning).FillWidth()
+				ui.Text(c, a.searchNotice).FontSize(12).TextColor(c.Theme().Warning).FillWidth()
 			}
 			if a.searchReplacementNotice != "" {
-				ui.Text(c, a.searchReplacementNotice).FontSize(11).TextColor(c.Theme().Warning).FillWidth()
+				ui.Text(c, a.searchReplacementNotice).FontSize(12).TextColor(c.Theme().Warning).FillWidth()
 			}
 			if a.searchSkipped > 0 {
-				ui.Text(c, fmt.Sprintf("%d large or non-text files skipped", a.searchSkipped)).FontSize(10).TextColor(c.Theme().TextMuted).FillWidth()
+				ui.Text(c, fmt.Sprintf("%d large or non-text files skipped", a.searchSkipped)).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
 			}
 			a.replacementConfirmation(c)
 			a.replacementFeedback(c)
@@ -352,8 +352,11 @@ func (a *App) searchScopeLabel() string {
 	if a.searchOpenFiles {
 		labels = append(labels, "Open files only")
 	}
-	if a.searchInclude != "" || a.searchExclude != "" {
-		labels = append(labels, "File filters active")
+	if a.searchInclude != "" {
+		labels = append(labels, "Files: "+a.searchInclude)
+	}
+	if a.searchExclude != "" {
+		labels = append(labels, "Exclude: "+a.searchExclude)
 	}
 	if a.searchAllFiles {
 		labels = append(labels, "Dependencies included")

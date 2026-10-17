@@ -41,9 +41,9 @@ func (a *App) dialogs(c *ui.Context) {
 		ui.Divider(c).Background(line)
 		tavuDialogSection(c, "Local Data", func() {
 			ui.Text(c, "Location: "+a.dataRoot).FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
-			ui.Text(c, "Snapshots store code: up to 20 / 64 MiB per folder.\nTerminal I/O, environment variables, and command history aren't saved.\nTerminal programs can't access the clipboard by default.").FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
-			ui.ButtonBase(c).Label("Clear Snapshots…").AlignSelf(ui.Start).Padding(5, 0).Disabled(a.root == "" || a.busy || a.loading).OnClick(func() { a.confirmClean = true }).Children(func() {
-				ui.Text(c, "Clear Snapshots…").FontSize(12).TextColor(c.Theme().Danger)
+			ui.Text(c, "Saved reviews store code: up to 20 / 64 MiB per folder.\nTerminal I/O, environment variables, and command history aren't saved.\nTerminal programs can't access the clipboard by default.").FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
+			ui.ButtonBase(c).Label("Clear Saved Reviews…").AlignSelf(ui.Start).Padding(5, 0).Disabled(a.root == "" || a.busy || a.loading).OnClick(func() { a.confirmClean = true }).Children(func() {
+				ui.Text(c, "Clear Saved Reviews…").FontSize(12).TextColor(c.Theme().Danger)
 			})
 		})
 		ui.Divider(c).Background(line)
@@ -110,19 +110,20 @@ func (a *App) dialogs(c *ui.Context) {
 	}
 	editing := a.editingComment != ""
 	tavuDialog(c.Key("edit-comment"), &editing, "Edit Comment", "Original code and location stay attached.", 580, 220, func(width, height float32) {
-		tavuDialogField(ui.TextArea(c, &a.commentDraft)).Width(width).Height(height).Label("Comment Text")
+		tavuDialogField(ui.TextArea(c, &a.commentEditDraft)).Width(width).Height(height).Label("Comment Text")
 	}, func() {
-		tavuDialogButton(c, "Cancel", false).OnClick(func() { a.editingComment = ""; a.commentDraft = "" })
-		tavuDialogButton(c, "Save", true).Label("Save Comment").Disabled(strings.TrimSpace(a.commentDraft) == "").OnClick(func() {
-			a.fail(a.state.Review.EditComment(a.editingComment, a.commentDraft))
+		tavuDialogButton(c, "Cancel", false).OnClick(func() { a.editingComment = ""; a.commentEditDraft = "" })
+		tavuDialogButton(c, "Save", true).Label("Save Edited Comment").Disabled(strings.TrimSpace(a.commentEditDraft) == "").OnClick(func() {
+			a.fail(a.state.Review.EditComment(a.editingComment, a.commentEditDraft))
 			a.editingComment = ""
-			a.commentDraft = ""
+			a.commentEditDraft = ""
 			a.saveReview()
 			a.decorate(a.current())
 		})
 	})
 	if !editing {
 		a.editingComment = ""
+		a.commentEditDraft = ""
 	}
 	if ui.AlertDialog(c.Key("close-session"), &a.confirmClose, "Close Terminal?", "This session may still have running processes.", "Cancel", "Close Terminal") == 1 {
 		a.closeTerminal(a.closeID)
@@ -133,7 +134,7 @@ func (a *App) dialogs(c *ui.Context) {
 	if ui.AlertDialog(c.Key("switch-project"), &a.confirmProject, "Switch Folder?", "Closes current terminals and saves reviews.", "Cancel", "Open Folder") == 1 {
 		a.openProject(a.pendingProject)
 	}
-	if ui.AlertDialog(c.Key("clean-snapshots"), &a.confirmClean, "Clear Snapshots?", "Deletes snapshots. Comments and their code are kept.", "Cancel", "Clear Snapshots") == 1 {
+	if ui.AlertDialog(c.Key("clean-snapshots"), &a.confirmClean, "Clear Saved Reviews?", "Deletes saved reviews. Comments and their excerpts are kept.", "Cancel", "Clear Saved Reviews") == 1 {
 		a.clearHistory()
 	}
 }

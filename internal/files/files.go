@@ -29,8 +29,9 @@ var (
 )
 
 type Service struct {
-	root     string
-	rootInfo os.FileInfo
+	root      string
+	rootAlias string // Original absolute spelling, e.g. macOS /var versus /private/var.
+	rootInfo  os.FileInfo
 	// MaxBytes bounds a single read. Nonpositive values use DefaultMaxBytes.
 	MaxBytes int64
 }
@@ -52,9 +53,14 @@ type Document struct {
 }
 
 type Match struct {
+	Hash string // Hash of the complete source file when this occurrence was found.
 	Path string
 	Line int // One-based; Text has no line terminator.
 	Text string
+	// Column and EndColumn are zero-based UTF-8 byte offsets in Text. The
+	// end is exclusive. SearchWithOptions returns one Match per occurrence;
+	// legacy Search keeps its original one-per-line, zero-column contract.
+	Column, EndColumn int
 }
 
 func New(root string) (*Service, error) {
@@ -73,7 +79,7 @@ func New(root string) (*Service, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("Project path is not a directory: %s", root)
 	}
-	return &Service{root: canonical, rootInfo: info, MaxBytes: DefaultMaxBytes}, nil
+	return &Service{root: canonical, rootAlias: absolute, rootInfo: info, MaxBytes: DefaultMaxBytes}, nil
 }
 
 func (s *Service) Root() string { return s.root }

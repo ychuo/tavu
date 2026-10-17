@@ -25,15 +25,16 @@ func main() {
 	}
 	mygo.App.WhenReady(func() {
 		mygo.App.SetLocale("en")
+		mygo.Theme.SetSource(mygo.ThemeDark)
 		data, err := mygo.App.Path(mygo.PathUserData)
 		if err != nil {
 			log.Print(err)
 		}
 		a := views.New(data)
-		win := mygo.NewWindow(mygo.WindowOptions{Title: "Tavu", Width: 1380, Height: 920, MinWidth: 760, MinHeight: 560, StateKey: "main", BackgroundColor: "#242624", TitleBarStyle: mygo.TitleBarHiddenInset, TrafficLightPosition: &mygo.Point{X: 14, Y: 15}, TitleBarHeight: 44, Content: ui.View(a.View)})
+		win := mygo.NewWindow(mygo.WindowOptions{Title: "Tavu", Width: 1380, Height: 920, MinWidth: 760, MinHeight: 560, StateKey: "main", BackgroundColor: "#242624", TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 15}, TitleBarHeight: 44, Content: ui.View(a.View)})
 		a.Attach(win)
 		mygo.App.OnSecondInstance(func(_ []string, _ string) { win.Show(); win.Focus() })
-		mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Role: mygo.RoleAppMenu}, {Role: mygo.RoleEditMenu}, {Role: mygo.RoleWindowMenu}}))
+		mygo.App.SetMenu(a.Menu())
 		path := ""
 		if len(os.Args) > 1 {
 			path = os.Args[1]

@@ -23,10 +23,16 @@ import (
 
 type document struct {
 	ID, Path, Label, Notice string
+	DiskHash                string
+	Preview, Stale          bool
+	VersionNotice           string
 	Code                    *editor.State
 	Diff                    *editor.DiffState
 	Comparison              *review.Comparison
 	SnapshotID              string
+	Replacement             bool
+	ReplaceMatch            files.Match
+	ReplaceRevision         uint64
 }
 
 type projectData struct {
@@ -46,6 +52,8 @@ type App struct {
 	closed                                  atomic.Bool
 	store                                   *storage.Store
 	settings                                storage.Settings
+	settingsDraft                           storage.Settings
+	settingsDraftOpen                       bool
 	dataRoot                                string
 	writer                                  *persistqueue.Queue
 	projectCtx                              context.Context
@@ -63,21 +71,63 @@ type App struct {
 	snapshot                                *review.Snapshot
 	reviewing                               bool
 	changed                                 bool
+	snapshotCheckNotice                     string
 	busy, refreshing, refreshAgain, loading bool
 	message                                 string
 	terms                                   *sessions.Manager
 	activeTerm, secondTerm                  string
 	termFocus                               string
+	readerFocus                             bool
+	lastFocusedPane, lastFocusedTerminal    string
+	choosingProject                         bool
 	termStarting                            bool
+	renameTerminalID, terminalNameDraft     string
 	mode                                    string
 	readerRatio, doubleRatio                float32
 	sidebar                                 bool
+	sidebarWidth                            float32
 	sidebarTab                              int
 	reviewTab                               int
 	fileQuery, textQuery                    string
+	quickOpen                               bool
+	quickQuery                              string
+	quickNotice                             string
+	revealPath                              string
+	quickResults                            []files.Entry
+	quickSelected                           int
+	quickMoved                              bool
+	quickSearching                          bool
+	quickSearchID                           uint64
+	quickCancel                             context.CancelFunc
 	searching                               bool
 	searchCancel                            context.CancelFunc
 	searchID                                uint64
+	searchFocus                             bool
+	searchCase, searchWord, searchRegex     bool
+	searchDetails, searchOpenFiles          bool
+	searchAllFiles                          bool
+	searchInclude, searchExclude            string
+	searchNotice                            string
+	searchCompleted, searchTruncated        bool
+	searchSkipped                           int
+	searchCollapsed                         map[string]bool
+	searchSelected                          string
+	searchOpenPaths                         string
+	searchReplacementValues                 map[string]string
+	searchReplacementNotice                 string
+	searchDismissedFiles                    map[string]bool
+	searchDismissedMatches                  []files.Match
+	searchList                              ui.ListState
+	searchAnchor                            *files.Match
+	replaceUndo                             *replacementUndo
+	replaceFeedback                         string
+	replaceExpanded                         bool
+	replacement                             string
+	replaceConfirm, replacePreparing        bool
+	replacePlan                             *files.ReplacePlan
+	replaceFiles                            []files.ReplaceFile
+	replaceID                               uint64
+	replaceCancel                           context.CancelFunc
 	found                                   []files.Entry
 	matches                                 []files.Match
 	trees                                   map[string][]files.Entry
@@ -98,9 +148,12 @@ type App struct {
 	preview                                 string
 	exportSelected                          map[string]bool
 	settingsOpen                            bool
-	commitOpen                              bool
 	commitMessage                           string
-	commitStatus                            gitrepo.Status
+	commitError                             string
+	commitErrorExpanded                     bool
+	commitDisplayedToken                    string
+	committing                              bool
+	commitDrafts                            map[string]string
 	confirmClose                            bool
 	closeID                                 string
 	confirmQuit                             bool
@@ -127,6 +180,7 @@ func New(dataRoot string) *App {
 	}
 	a.mode = a.settings.Layout.Mode
 	a.sidebar = a.settings.Layout.SidebarVisible
+	a.sidebarWidth = a.settings.Layout.SidebarWidth
 	a.readerRatio = (1 - a.settings.Layout.TerminalRatio) * 100
 	if a.readerRatio < 10 || a.readerRatio > 90 {
 		a.readerRatio = 52
@@ -203,7 +257,7 @@ func (a *App) queue(key string, job func() error) {
 		return
 	}
 	if !a.writer.Put(key, job) {
-		a.message = "Save could not be queued. Try again shortly."
+		a.message = "Save not queued. Try again."
 	}
 }
 func (a *App) saveReview() {
@@ -221,6 +275,7 @@ func (a *App) saveReview() {
 func (a *App) saveSettings() {
 	a.settings.Layout.Mode = a.mode
 	a.settings.Layout.SidebarVisible = a.sidebar
+	a.settings.Layout.SidebarWidth = a.sidebarWidth
 	a.settings.Layout.TerminalRatio = 1 - a.readerRatio/100
 	s := a.settings
 	s.RecentProjects = append([]string(nil), s.RecentProjects...)
@@ -236,7 +291,7 @@ func (a *App) shutdown() {
 		return
 	}
 	if a.busy || a.loading {
-		a.message = "Wait for the current operation before quitting."
+		a.message = "Wait for this operation before quitting."
 		return
 	}
 	a.saveReview()
@@ -256,9 +311,14 @@ func (a *App) shutdown() {
 	}()
 }
 func (a *App) chooseProject() {
+	if a.workspaceModalOpen() || a.loading || a.quitting || a.busy {
+		return
+	}
+	a.choosingProject = true
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: "Tavu · Open Folder", Directory: true})
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: "Open Folder", Directory: true})
 		a.update(func() {
+			a.choosingProject = false
 			a.fail(err)
 			if len(paths) > 0 {
 				a.requestProject(paths[0])
@@ -280,17 +340,105 @@ func (a *App) requestProject(path string) {
 func (a *App) addDocument(d *document) {
 	for _, old := range a.documents {
 		if old.ID == d.ID {
-			a.hasRange = false
-			a.selectedDoc = old.ID
+			a.selectDocument(old.ID)
 			return
 		}
 	}
-	if len(a.documents) >= 16 {
-		a.documents = a.documents[1:]
+	if d.Preview {
+		for i, old := range a.documents {
+			if old.Preview {
+				a.documents[i] = d
+				a.selectDocument(d.ID)
+				return
+			}
+		}
 	}
 	a.documents = append(a.documents, d)
-	a.selectedDoc = d.ID
-	a.hasRange = false
+	a.selectDocument(d.ID)
+}
+
+func (a *App) selectDocument(id string) {
+	for _, d := range a.documents {
+		if d.ID == id {
+			a.selectedDoc = id
+			a.hasRange = false
+			a.focusReader()
+			a.decorate(d)
+			if d.DiskHash != "" || (d.Comparison != nil && d.SnapshotID == "") {
+				a.refresh()
+			}
+			return
+		}
+	}
+}
+
+func (a *App) pinCurrentDocument() {
+	if d := a.current(); d != nil {
+		d.Preview = false
+	}
+}
+
+func (a *App) focusReader() {
+	a.lastFocusedPane = "reader"
+	a.cancelDocumentLoad()
+	if a.mode == "terminal" {
+		a.mode = "split"
+		a.saveSettings()
+	}
+	a.termFocus = ""
+	a.readerFocus = true
+}
+
+func (a *App) focusTerminal() {
+	a.lastFocusedPane, a.lastFocusedTerminal = "terminal", a.activeTerm
+	a.cancelDocumentLoad()
+	if a.mode == "review" {
+		a.mode = "split"
+		a.saveSettings()
+	}
+	a.readerFocus = false
+	a.termFocus = a.activeTerm
+}
+
+// Every explicit navigation invalidates pending reads. Canceling the context
+// alone is insufficient: a completed read may already be queued for the UI.
+func (a *App) cancelDocumentLoad() {
+	a.loadID++
+	if a.loadCancel != nil {
+		a.loadCancel()
+		a.loadCancel = nil
+	}
+}
+
+func (a *App) completeDocumentLoad(id uint64, apply func()) {
+	if id != a.loadID {
+		return
+	}
+	// Consume the request before applying it. The resulting document focus may
+	// cancel navigation again; the read has finished and needs no live context.
+	a.cancelDocumentLoad()
+	apply()
+}
+
+// An explicit refresh can replace a live tab, but never a saved snapshot or
+// historical excerpt. Comments keep their original comparison fingerprints.
+func (a *App) replaceDocument(id string, d *document) {
+	for i, old := range a.documents {
+		if old.ID == id && old.SnapshotID == "" && (old.DiskHash != "" || old.Comparison != nil) {
+			for _, existing := range a.documents {
+				if existing.ID == d.ID && existing.ID != id {
+					a.closeDocument(id)
+					a.selectDocument(existing.ID)
+					return
+				}
+			}
+			d.Preview = old.Preview
+			a.documents[i] = d
+			a.selectDocument(d.ID)
+			return
+		}
+	}
+	// If the target was closed while the read was in flight, do not reopen it.
 }
 func newCode(path string, raw []byte) *editor.State {
 	b := editor.NewBuffer(string(raw))
@@ -298,6 +446,7 @@ func newCode(path string, raw []byte) *editor.State {
 	return &editor.State{Buffer: b, ReadOnly: true, NoScrollPastEnd: true, SoftWrap: true, Theme: codeTheme()}
 }
 func (a *App) closeDocument(id string) {
+	a.cancelDocumentLoad()
 	a.hasRange = false
 	for i, d := range a.documents {
 		if d.ID == id {

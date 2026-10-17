@@ -26,7 +26,7 @@ func TestNativeReviewWorkflow(t *testing.T) {
 	comp := review.Comparison{Path: "main.go", Kind: "unstaged", Old: []byte("package main\n\n// 旧代码\n"), New: []byte("package main\n\n// 新代码🙂\n"), HEAD: "head", Baseline: "index", OldMode: "100644", NewMode: "100644"}
 	a.showComparison(comp, "snapshot-test")
 	tt := ui.NewTester(a.View, 1380, 920)
-	click(t, tt, "Mark as Seen")
+	click(t, tt, "Mark Seen")
 	if !a.state.Review.IsSeen(comp.Fingerprint()) {
 		t.Fatal("explicit seen did not persist")
 	}
@@ -63,8 +63,17 @@ func TestNativeReviewWorkflow(t *testing.T) {
 		t.Fatal("not reopened")
 	}
 	old := d.Diff.New.String()
-	designChooseLayout(t, tt, "Focus Terminal")
-	designChooseLayout(t, tt, "Focus Review")
+	// A saved terminal preference must not replace the only real content with
+	// an empty terminal pane. Real cross-pane switching has PTY coverage.
+	a.setMode("terminal")
+	tt.Frame()
+	if a.effectivePaneMode() != "review" {
+		t.Fatal("an unavailable terminal hid the active comparison")
+	}
+	if _, ok := tt.Find("More Actions"); !ok {
+		t.Fatal("reader disappeared when the preferred terminal pane was empty")
+	}
+	designChooseLayout(t, tt, "Maximize Reader")
 	if a.current() != d || d.Diff.New.String() != old {
 		t.Fatal("mode switch recreated comparison")
 	}

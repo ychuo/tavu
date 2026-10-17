@@ -96,7 +96,46 @@ func flatButton(c *ui.Context, label string) ui.Element {
 }
 
 func toolButton(c *ui.Context, name, label string) ui.Element {
-	return flatButton(c, label).Tooltip(label).Size(28, 28).Padding(6).TextColor(c.Theme().TextMuted).Children(func() { glyph(c, name) })
+	// Center independently of the hit target: compact toolbars also use 24-DIP
+	// buttons, where the old fixed six-DIP padding displaced a 16-DIP icon.
+	b := flatButton(c, label).Size(28, 28).Padding(0).Justify(ui.Center).Shrink(0).TextColor(c.Theme().TextMuted).Children(func() { glyph(c, name) })
+	tip := label
+	switch label {
+	case "Quick Open":
+		tip += " · ⌘P"
+	case "Toggle Sidebar":
+		tip += " · ⌘B"
+	case "New Terminal":
+		tip += " · ⌘⇧T"
+	}
+	tooltipBelow(c, b, tip)
+	return b
+}
+
+// Toolbar tips stay below their anchor and out of the window controls.
+func tooltipBelow(c *ui.Context, anchor ui.Element, text string) {
+	anchor.Description(text)
+	ui.TooltipBase(c, anchor, func(tip ui.Element) {
+		tip.AttachTo(anchor, ui.AnchorBottom, ui.AnchorTop).Margin(6, 0, 0, 0).
+			MaxWidth(300).Padding(5, 8).Radius(4).Background(c.Theme().Inverse).
+			TextColor(c.Theme().InverseText).FontSize(12).
+			Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, .2)).Children(func() { ui.Text(c, text) })
+	})
+}
+
+func equalSegments(c *ui.Context, selected *int, labels ...string) {
+	parts := ui.SegmentedBase(c, selected, len(labels))
+	parts.Track.Label("Review Version").FillWidth().Height(28).Padding(2).Gap(2).Radius(5).Border(1, line).Children(func() {
+		for i, label := range labels {
+			segment := parts.Segment(i).Label(label).Grow(1).Basis(0).MinWidth(0).Height(22).AlignItems(ui.Center).Justify(ui.Center).Radius(3)
+			if i == *selected {
+				segment.Background(c.Theme().SurfacePressed)
+			} else if segment.Hovered() {
+				segment.Background(c.Theme().SurfaceHover)
+			}
+			segment.Children(func() { ui.Text(c, label).FontSize(11).SingleLine() })
+		}
+	})
 }
 
 func toolToggle(c *ui.Context, name, label string, selected bool) ui.Element {

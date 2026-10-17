@@ -23,14 +23,23 @@ func (a *App) openProject(path string) {
 		return
 	}
 	a.saveReview()
-	a.loadID++
+	a.cancelDocumentLoad()
 	a.searchID++
-	if a.loadCancel != nil {
-		a.loadCancel()
-	}
+	a.quickSearchID++
 	if a.searchCancel != nil {
 		a.searchCancel()
 	}
+	if a.quickCancel != nil {
+		a.quickCancel()
+	}
+	a.quickOpen = false
+	a.quickSearching = false
+	a.quickQuery = ""
+	a.quickResults = nil
+	a.quickSelected = 0
+	a.quickMoved = false
+	a.renameTerminalID = ""
+	a.terminalNameDraft = ""
 	a.refreshing = false
 	a.refreshAgain = false
 	a.termStarting = false
@@ -111,6 +120,7 @@ func (a *App) openProject(path string) {
 				return
 			}
 			a.loading = false
+			a.switchCommitDraft(fs.Root())
 			a.root = fs.Root()
 			a.fs = fs
 			a.repo = repo
@@ -123,7 +133,8 @@ func (a *App) openProject(path string) {
 			a.snapshot = snap
 			a.reviewing = false
 			a.reviewTab = 0
-			a.changed = snap != nil
+			a.changed = false
+			a.snapshotCheckNotice = ""
 			a.documents = nil
 			a.selectedDoc = ""
 			a.trees = map[string][]files.Entry{".": entries}
@@ -132,6 +143,7 @@ func (a *App) openProject(path string) {
 			a.rebuildRows()
 			a.fileQuery = ""
 			a.textQuery = ""
+			a.resetSearch()
 			a.found = nil
 			a.matches = nil
 			a.settings.LastProject = a.root
@@ -143,7 +155,7 @@ func (a *App) openProject(path string) {
 			}
 			a.fail(e)
 			a.fail(loadErr)
-			a.terms = sessions.NewManager(sessions.Config{Dir: a.root, Shell: a.settings.Shell, FontSize: a.settings.FontSize, Dispatch: a.update, OnChange: func() {}, OnError: a.fail, OnLink: func(t sessions.LinkTarget) {
+			a.terms = sessions.NewManager(sessions.Config{Dir: a.root, Shell: a.settings.Shell, FontSize: a.settings.FontSize, FontFamily: a.settings.FontFamily, Dispatch: a.update, OnChange: func() {}, OnError: a.fail, OnLink: func(t sessions.LinkTarget) {
 				p, e := filepath.Rel(a.root, t.Path)
 				if e != nil {
 					a.fail(e)
@@ -195,7 +207,6 @@ func (a *App) watch(ctx context.Context, gen uint64, paths ...string) {
 				}
 				a.update(func() {
 					if gen == a.generation {
-						a.changed = true
 						a.reloadTree()
 						a.refresh()
 					}
@@ -205,7 +216,7 @@ func (a *App) watch(ctx context.Context, gen uint64, paths ...string) {
 	}
 }
 func (a *App) refresh() {
-	if a.repo == nil || a.projectCtx == nil || a.quitting || a.loading {
+	if a.fs == nil || a.projectCtx == nil || a.quitting || a.loading {
 		return
 	}
 	if a.busy {
@@ -217,17 +228,27 @@ func (a *App) refresh() {
 		return
 	}
 	a.refreshing = true
-	repo, ctx, gen := a.repo, a.projectCtx, a.generation
+	repo, fs, ctx, gen := a.repo, a.fs, a.projectCtx, a.generation
 	epoch := a.statusEpoch
 	keys := a.observeKeys()
+	diskPaths := a.observedDiskPaths()
 	go func() {
 		query, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
-		s, err := repo.Status(query)
+		var s gitrepo.Status
+		var err error
 		var latest map[string]string
 		var observeErr error
-		if err == nil {
-			latest, observeErr = workspace.Observe(query, repo, s, keys)
+		if repo != nil {
+			s, err = repo.Status(query)
+			if err == nil {
+				latest, observeErr = workspace.Observe(query, repo, s, keys)
+			}
+		}
+		disk := map[string]diskVersion{}
+		for _, path := range diskPaths {
+			f, e := fs.Read(query, path)
+			disk[path] = diskVersion{hash: f.Hash, err: e}
 		}
 		a.update(func() {
 			if gen != a.generation {
@@ -239,16 +260,12 @@ func (a *App) refresh() {
 				return
 			}
 			if err == nil {
-				if a.status.Token != s.Token {
-					a.changed = true
-				}
 				a.status = s
 				a.latest = latest
-				if observeErr != nil {
-					a.changed = true
-					a.message = "Version check unavailable: " + observeErr.Error()
-				}
+				a.updateVersionState(s, latest, observeErr, disk)
 			} else {
+				a.updateVersionState(a.status, nil, err, disk)
+				a.changed = false // Cached Git status cannot establish a current difference.
 				a.fail(err)
 			}
 			if a.refreshAgain {
@@ -257,6 +274,108 @@ func (a *App) refresh() {
 			}
 		})
 	}()
+}
+
+type diskVersion struct {
+	hash string
+	err  error
+}
+
+// Bound background I/O even when many tabs are pinned. Always check the active
+// working file first, then the most recently opened files. Files are limited
+// to 2 MiB by files.Service and share refresh's 20-second deadline.
+func (a *App) observedDiskPaths() []string {
+	const maxWorkingFiles = 32
+	paths := make([]string, 0, maxWorkingFiles)
+	seen := map[string]bool{}
+	add := func(path string) {
+		if !seen[path] {
+			paths = append(paths, path)
+			seen[path] = true
+		}
+	}
+	if d := a.current(); d != nil && d.DiskHash != "" {
+		add(d.Path)
+	}
+	for i := len(a.documents) - 1; i >= 0 && len(paths) < maxWorkingFiles; i-- {
+		if d := a.documents[i]; d.DiskHash != "" {
+			add(d.Path)
+		}
+	}
+	return paths
+}
+
+// A file event is only a request to re-check versions. Warnings describe a
+// verified content/key change, not the fact that the watcher fired.
+func (a *App) updateVersionState(status gitrepo.Status, latest map[string]string, observeErr error, disk map[string]diskVersion) {
+	a.changed = false
+	a.snapshotCheckNotice = ""
+	if a.snapshot != nil {
+		currentKeys := map[string]bool{}
+		for _, ch := range status.Changes {
+			currentKeys[workspace.Key(string(ch.Kind), ch.Path)] = true
+		}
+		snapshotKeys := map[string]bool{}
+		unknown := observeErr != nil
+		for _, comp := range a.snapshot.Comparisons {
+			key := workspace.Key(comp.Kind, comp.Path)
+			snapshotKeys[key] = true
+			if !currentKeys[key] {
+				a.changed = true
+			}
+			if fp, ok := latest[key]; ok {
+				if fp != comp.Fingerprint() {
+					a.changed = true
+				}
+			} else if currentKeys[key] {
+				unknown = true
+			}
+		}
+		if len(currentKeys) != len(snapshotKeys) {
+			a.changed = true
+		}
+		if unknown {
+			a.snapshotCheckNotice = "Snapshot check unavailable"
+		}
+	}
+	for _, d := range a.documents {
+		if d.SnapshotID != "" {
+			continue
+		}
+		if d.Replacement && d.ReplaceRevision != a.searchID {
+			continue // A disk check must not clear an outdated search preview.
+		}
+		if d.DiskHash != "" {
+			v, ok := disk[d.Path]
+			if !ok {
+				continue
+			}
+			d.Stale, d.VersionNotice = false, ""
+			switch {
+			case errors.Is(v.err, os.ErrNotExist):
+				d.Stale, d.VersionNotice = true, "Working file was removed"
+			case v.err != nil:
+				d.VersionNotice = "File check unavailable"
+			case v.hash != d.DiskHash:
+				d.Stale, d.VersionNotice = true, "Working file changed on disk"
+			}
+		} else if d.Comparison != nil {
+			fp, ok := latest[workspace.Key(d.Comparison.Kind, d.Path)]
+			if !ok {
+				if observeErr != nil {
+					d.VersionNotice = "Comparison check unavailable"
+				}
+				continue
+			}
+			d.Stale, d.VersionNotice = fp != d.Comparison.Fingerprint(), ""
+			if d.Stale {
+				d.VersionNotice = "Comparison changed"
+				if fp == workspace.AbsentFingerprint {
+					d.VersionNotice = "Change removed from working tree"
+				}
+			}
+		}
+	}
 }
 func (a *App) newTerminal(split bool) {
 	if a.terms == nil || a.termStarting || a.loading {
@@ -281,6 +400,7 @@ func (a *App) newTerminal(split bool) {
 			} else {
 				a.activeTerm = s.ID
 			}
+			a.focusTerminal()
 			a.termFocus = s.ID
 			a.saveSettings()
 			if !split && len(m.Sessions()) == 1 && a.settings.Layout.SplitTerminals {
@@ -309,16 +429,32 @@ func (a *App) closeTerminal(id string) {
 				return
 			}
 			a.fail(err)
-			if a.activeTerm == "" {
-				for _, s := range m.Sessions() {
-					if s.ID != a.secondTerm {
-						a.activeTerm = s.ID
-						break
-					}
-				}
-			}
+			a.reconcileTerminals(m.Sessions())
+			a.saveSettings()
 		})
 	}()
+}
+
+func (a *App) reconcileTerminals(remaining []sessions.Session) {
+	available := map[string]bool{}
+	for _, session := range remaining {
+		available[session.ID] = true
+	}
+	if !available[a.activeTerm] {
+		a.activeTerm = ""
+		if available[a.secondTerm] {
+			a.activeTerm, a.secondTerm = a.secondTerm, ""
+		} else if len(remaining) > 0 {
+			a.activeTerm = remaining[0].ID
+		}
+	}
+	if !available[a.secondTerm] || a.secondTerm == a.activeTerm {
+		a.secondTerm = ""
+	}
+	a.settings.Layout.SplitTerminals = a.activeTerm != "" && a.secondTerm != ""
+	if !available[a.termFocus] {
+		a.termFocus = a.activeTerm
+	}
 }
 func (a *App) requestCloseTerminal(id string) {
 	for _, s := range a.terms.Sessions() {
@@ -376,75 +512,40 @@ func (a *App) toggleDir(path string) {
 		})
 	}()
 }
-func (a *App) search(text bool) {
-	if a.fs == nil || a.loading {
-		return
-	}
-	if a.searchCancel != nil {
-		a.searchCancel()
-	}
-	ctx, cancel := context.WithTimeout(a.projectCtx, 8*time.Second)
-	a.searchCancel = cancel
-	a.searchID++
-	id := a.searchID
-	fs, q := a.fs, a.fileQuery
-	if text {
-		q = a.textQuery
-	}
-	a.searching = true
-	go func() {
-		defer cancel()
-		var found []files.Entry
-		var matches []files.Match
-		var err error
-		if text {
-			matches, err = fs.Search(ctx, q, 200)
-		} else {
-			found, err = fs.Find(ctx, q, 200)
-		}
-		a.update(func() {
-			if id != a.searchID {
-				return
-			}
-			a.searching = false
-			a.fail(err)
-			if text {
-				a.matches = matches
-			} else {
-				a.found = found
-			}
-		})
-	}()
-}
+
 func (a *App) openFile(path string, line int) {
+	a.openFileReplacing(path, line, "")
+}
+
+func (a *App) openFileReplacing(path string, line int, replaceID string) {
 	if a.fs == nil || a.loading {
 		return
 	}
-	if a.loadCancel != nil {
-		a.loadCancel()
-	}
+	a.cancelDocumentLoad()
 	ctx, cancel := context.WithTimeout(a.projectCtx, 10*time.Second)
 	a.loadCancel = cancel
-	a.loadID++
 	id := a.loadID
 	fs := a.fs
 	go func() {
 		defer cancel()
 		f, err := fs.Read(ctx, path)
 		a.update(func() {
-			if id != a.loadID {
-				return
-			}
-			if err != nil {
-				a.fail(err)
-				return
-			}
-			d := &document{ID: "disk:" + f.Path + ":" + f.Hash, Path: f.Path, Label: filepath.Base(path) + " · Disk", Notice: "Disk · Read-only · Loaded " + short(f.Hash), Code: newCode(path, f.Raw)}
-			if line > 0 {
-				pos := d.Code.Buffer.Offset(editor.Pos{Line: line - 1})
-				d.Code.Select(pos, pos)
-			}
-			a.addDocument(d)
+			a.completeDocumentLoad(id, func() {
+				if err != nil {
+					a.fail(err)
+					return
+				}
+				d := &document{ID: "disk:" + f.Path + ":" + f.Hash, Path: f.Path, Label: filepath.Base(path), Notice: "Working file · Read-only", DiskHash: f.Hash, Preview: true, Code: newCode(path, f.Raw)}
+				if line > 0 {
+					pos := d.Code.Buffer.Offset(editor.Pos{Line: line - 1})
+					d.Code.Select(pos, pos)
+				}
+				if replaceID != "" {
+					a.replaceDocument(replaceID, d)
+				} else {
+					a.addDocument(d)
+				}
+			})
 		})
 	}()
 }
@@ -466,38 +567,43 @@ func modeType(mode string) string {
 	return "file"
 }
 func (a *App) openChange(change gitrepo.Change) {
+	a.openChangeReplacing(change, "")
+}
+
+func (a *App) openChangeReplacing(change gitrepo.Change, replaceID string) {
 	if a.repo == nil || a.loading {
 		return
 	}
-	if a.loadCancel != nil {
-		a.loadCancel()
-	}
+	a.cancelDocumentLoad()
 	ctx, cancel := context.WithTimeout(a.projectCtx, 20*time.Second)
 	a.loadCancel = cancel
-	a.loadID++
 	id := a.loadID
 	repo := a.repo
 	go func() {
 		defer cancel()
 		v, err := repo.Compare(ctx, change)
 		a.update(func() {
-			if id != a.loadID {
-				return
-			}
-			if err != nil {
-				a.fail(err)
-				return
-			}
-			c := comparisonOf(v)
-			if a.latest == nil {
-				a.latest = map[string]string{}
-			}
-			a.latest[workspace.Key(c.Kind, c.Path)] = c.Fingerprint()
-			a.showComparison(c, "")
+			a.completeDocumentLoad(id, func() {
+				if err != nil {
+					a.fail(err)
+					return
+				}
+				c := comparisonOf(v)
+				if a.latest == nil {
+					a.latest = map[string]string{}
+				}
+				a.latest[workspace.Key(c.Kind, c.Path)] = c.Fingerprint()
+				a.showComparisonReplacing(c, "", replaceID)
+			})
 		})
 	}()
 }
 func (a *App) showComparison(c review.Comparison, snapshotID string) {
+	a.cancelDocumentLoad()
+	a.showComparisonReplacing(c, snapshotID, "")
+}
+
+func (a *App) showComparisonReplacing(c review.Comparison, snapshotID, replaceID string) {
 	c = c.Clone()
 	fp := c.Fingerprint()
 	d := &document{ID: "diff:" + snapshotID + ":" + fp, Path: c.Path, Label: filepath.Base(c.Path) + " · " + kindLabel(c.Kind), Comparison: &c, SnapshotID: snapshotID, Notice: kindLabel(c.Kind) + " · Loaded comparison"}
@@ -507,9 +613,9 @@ func (a *App) showComparison(c review.Comparison, snapshotID string) {
 	}
 	oldErr, newErr := files.ValidateText(c.Old), files.ValidateText(c.New)
 	if oldErr != nil || newErr != nil {
-		d.Notice += " · Binary or non-UTF-8 content; text preview unavailable"
+		d.Notice += " · Binary or non-UTF-8; no text preview"
 	} else if c.OldType == "gitlink" || c.NewType == "gitlink" {
-		d.Notice += " · Submodule review is not supported yet"
+		d.Notice += " · Submodule review unavailable"
 	} else {
 		d.Diff = &editor.DiffState{Old: newCode(c.Path, c.Old).Buffer, New: newCode(c.Path, c.New).Buffer, Editable: false, HunkActions: false, LineSelection: true, Indicators: editor.DiffClassic, Wrap: true, Theme: codeTheme()}
 		d.Diff.OnLineSelection = func(r editor.DiffLineRange) { a.selectedRange = r; a.hasRange = true }
@@ -520,9 +626,36 @@ func (a *App) showComparison(c review.Comparison, snapshotID string) {
 			d.Diff.SetSelectedLines(r, true)
 		}
 	}
-	a.addDocument(d)
+	if replaceID != "" {
+		a.replaceDocument(replaceID, d)
+	} else {
+		a.addDocument(d)
+	}
 	a.hasRange = false
 	a.decorate(d)
+}
+
+func (a *App) canRefreshCurrentDocument() bool {
+	d := a.current()
+	return d != nil && !d.Replacement && d.SnapshotID == "" && (d.DiskHash != "" || d.Comparison != nil)
+}
+
+func (a *App) refreshCurrentDocument() {
+	if !a.canRefreshCurrentDocument() || a.loading || a.busy {
+		return
+	}
+	d := a.current()
+	if d.DiskHash != "" {
+		a.openFileReplacing(d.Path, 1, d.ID)
+		return
+	}
+	for _, change := range a.status.Changes {
+		if change.Path == d.Path && string(change.Kind) == d.Comparison.Kind {
+			a.openChangeReplacing(change, d.ID)
+			return
+		}
+	}
+	a.message = "Change removed. Loaded version and comments kept."
 }
 func (a *App) fullVersion(old bool) {
 	d := a.current()
@@ -557,7 +690,6 @@ func (a *App) startReview() {
 		return
 	}
 	a.busy = true
-	a.changed = false
 	repo, ctx, gen := a.repo, a.projectCtx, a.generation
 	go func() {
 		snap, err := workspace.Capture(ctx, repo)
@@ -574,11 +706,13 @@ func (a *App) startReview() {
 				return
 			}
 			a.snapshot = &snap
+			a.changed = false
+			a.snapshotCheckNotice = ""
 			a.state.SnapshotID = snap.ID
 			a.reviewing = true
 			a.reviewTab = 1
 			a.saveReview()
-			a.message = "Snapshot created. External changes will not replace this version."
+			a.message = "Snapshot saved. External edits won’t update it."
 			if len(snap.Comparisons) > 0 {
 				a.showComparison(snap.Comparisons[0], snap.ID)
 			}
@@ -608,7 +742,7 @@ func (a *App) addComment() {
 	// save time; a cached range must never anchor a new comment.
 	a.selectedRange, a.hasRange = d.Diff.SelectedLines()
 	if !a.hasRange {
-		a.message = "Select lines before adding a comment."
+		a.message = "Select lines to comment."
 		return
 	}
 	side := review.NewSide
@@ -626,7 +760,7 @@ func (a *App) addComment() {
 	a.message = "Comment saved"
 }
 func (a *App) decorate(d *document) {
-	if d == nil || d.Diff == nil {
+	if d == nil || d.Diff == nil || d.Comparison == nil {
 		return
 	}
 	d.Diff.Annotations = nil
@@ -688,59 +822,28 @@ func (a *App) writeGit(stage bool, path string) {
 				return
 			}
 			a.status = s
-			a.changed = true
-			a.message = "Git updated. Seen status is tracked separately."
+			a.message = "Git updated. Seen status unchanged."
 			a.refresh()
-		})
-	}()
-}
-func (a *App) prepareCommit() {
-	if a.repo == nil || a.busy || a.loading {
-		return
-	}
-	a.busy = true
-	repo, ctx, gen := a.repo, a.projectCtx, a.generation
-	go func() {
-		s, err := repo.Status(ctx)
-		a.update(func() {
-			if gen != a.generation {
-				return
-			}
-			a.busy = false
-			if err != nil {
-				a.fail(err)
-				return
-			}
-			a.status = s
-			a.commitStatus = s
-			a.commitOpen = true
 		})
 	}()
 }
 func (a *App) commit() {
-	if a.busy || strings.TrimSpace(a.commitMessage) == "" {
+	request, ok := a.commitRequest()
+	if !ok {
 		return
 	}
 	a.busy = true
+	a.committing = true
+	a.commitError = ""
+	a.commitErrorExpanded = false
 	a.statusEpoch++
-	repo, ctx, gen, message, token := a.repo, a.projectCtx, a.generation, a.commitMessage, a.commitStatus.Token
+	repo, ctx := a.repo, a.projectCtx
 	go func() {
-		s, err := repo.Commit(ctx, message, token)
+		// Commit checks the exact status displayed by the composer. It never
+		// stages files and retains Git hooks, signing, and original failures.
+		s, err := repo.Commit(ctx, request.message, request.token)
 		a.update(func() {
-			if gen != a.generation {
-				return
-			}
-			a.busy = false
-			if err != nil {
-				a.fail(err)
-				return
-			}
-			a.status = s
-			a.changed = true
-			a.commitOpen = false
-			a.commitMessage = ""
-			a.message = "Committed · " + short(s.HEAD)
-			a.refresh()
+			a.finishCommit(request, s, err)
 		})
 	}()
 }
@@ -758,9 +861,11 @@ func (a *App) clearHistory() {
 			}
 			if gen == a.generation && err == nil {
 				a.snapshot = nil
+				a.changed = false
+				a.snapshotCheckNotice = ""
 				a.state.SnapshotID = ""
 				a.reviewTab = 0
-				a.message = "Snapshots cleared. Comments retain their original code."
+				a.message = "Snapshots cleared. Comment code kept."
 				a.saveReview()
 			}
 		})

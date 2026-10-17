@@ -6,36 +6,42 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"tavu/internal/gitrepo"
 )
 
 func (a *App) dialogs(c *ui.Context) {
-	tavuDialog(c.Key("export"), &a.previewOpen, "Export Comments", "Copy to the clipboard, then paste into another app yourself.", 700, 380, func(width, height float32) {
+	if a.settingsOpen && !a.settingsDraftOpen {
+		a.settingsDraft = a.settings
+		a.settingsDraftOpen = true
+	}
+	tavuDialog(c.Key("export"), &a.previewOpen, "Export Comments", "Copy comments, then paste into another app.", 700, 380, func(width, height float32) {
 		tavuDialogField(ui.TextArea(c, &a.preview)).ReadOnly(true).Width(width).Height(height).Font("monospace").FontSize(12).Label("Comment Preview")
 	}, func() {
-		tavuDialogButton(c, "Close Preview", false).OnClick(func() { a.previewOpen = false })
-		if tavuDialogButton(c, "Copy Comments", true).Disabled(a.preview == "").Clicked() {
+		tavuDialogButton(c, "Close", false).Label("Close Preview").OnClick(func() { a.previewOpen = false })
+		if tavuDialogButton(c, "Copy", true).Label("Copy Comments").Disabled(a.preview == "").Clicked() {
 			c.WriteClipboard(a.preview)
-			a.message = "Comments copied to clipboard"
+			a.message = "Comments copied"
 		}
 	})
-	tavuDialog(c.Key("settings"), &a.settingsOpen, "Tavu Settings", "Terminal preferences and local workspace data", 590, 440, func(width, _ float32) {
+	tavuDialog(c.Key("settings"), &a.settingsOpen, "Tavu Settings", "Terminal and local data", 590, 440, func(width, _ float32) {
 		tavuDialogSection(c, "Terminal", func() {
 			ui.Text(c, "Login Shell").FontSize(13)
-			tavuDialogField(ui.TextInput(c, &a.settings.Shell)).Label("Shell Path").Width(width).Placeholder("e.g. /bin/zsh")
-			ui.Text(c, "Leave blank for your default shell. Applies to new sessions.").FontSize(12).TextColor(c.Theme().TextMuted)
+			tavuDialogField(ui.TextInput(c, &a.settingsDraft.Shell)).Label("Shell Path").Width(width).Placeholder("e.g. /bin/zsh")
+			ui.Text(c, "Blank uses your default shell. New sessions only.").FontSize(12).TextColor(c.Theme().TextMuted)
+			ui.Text(c, "Font Family").FontSize(13)
+			tavuDialogField(ui.TextInput(c, &a.settingsDraft.FontFamily)).Label("Terminal Font Family").Width(width).Placeholder("System monospace")
+			ui.Text(c, "Blank uses system monospace.\nInstalled Nerd Fonts supply missing prompt icons.").FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
 			ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, fmt.Sprintf("Font Size %.0f", a.settings.FontSize)).Grow(1).FontSize(13)
+				ui.Text(c, fmt.Sprintf("Font Size %.0f", a.settingsDraft.FontSize)).Grow(1).FontSize(13)
 				ui.Toolbar(c, func() {
-					ui.Button(c, "−").Label("Decrease Font Size").Width(30).OnClick(func() { a.settings.FontSize = max(8, a.settings.FontSize-1) })
-					ui.Button(c, "＋").Label("Increase Font Size").Width(30).OnClick(func() { a.settings.FontSize = min(32, a.settings.FontSize+1) })
+					ui.Button(c, "−").Label("Decrease Font Size").Width(30).OnClick(func() { a.settingsDraft.FontSize = max(8, a.settingsDraft.FontSize-1) })
+					ui.Button(c, "＋").Label("Increase Font Size").Width(30).OnClick(func() { a.settingsDraft.FontSize = min(32, a.settingsDraft.FontSize+1) })
 				}).Label("Terminal Font Size").Padding(0).Gap(4)
 			})
 		})
 		ui.Divider(c).Background(line)
 		tavuDialogSection(c, "Local Data", func() {
-			ui.Text(c, "Data location: "+a.dataRoot).FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
-			ui.Text(c, "Snapshots contain source code. Limit: 20 snapshots / 64 MiB per folder.\nTerminal input/output, environment variables and command history are not saved.\nClipboard requests from terminal programs are blocked by default.").FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
+			ui.Text(c, "Location: "+a.dataRoot).FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
+			ui.Text(c, "Snapshots store code: up to 20 / 64 MiB per folder.\nTerminal I/O, environment variables, and command history aren't saved.\nTerminal programs can't access the clipboard by default.").FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
 			ui.ButtonBase(c).Label("Clear Snapshots…").AlignSelf(ui.Start).Padding(5, 0).Disabled(a.root == "" || a.busy || a.loading).OnClick(func() { a.confirmClean = true }).Children(func() {
 				ui.Text(c, "Clear Snapshots…").FontSize(12).TextColor(c.Theme().Danger)
 			})
@@ -64,53 +70,50 @@ func (a *App) dialogs(c *ui.Context) {
 			}
 		})
 	}, func() {
-		tavuDialogButton(c, "Close Settings", false).OnClick(func() { a.settingsOpen = false })
-		tavuDialogButton(c, "Save Settings", true).OnClick(func() {
+		tavuDialogButton(c, "Cancel", false).Label("Close Settings").OnClick(func() { a.settingsOpen = false })
+		tavuDialogButton(c, "Save", true).Label("Save Settings").OnClick(func() {
+			// Only editable preferences come from the draft. The workspace and
+			// layout may have changed independently while the dialog was open.
+			a.settings.Shell = strings.TrimSpace(a.settingsDraft.Shell)
+			a.settings.FontFamily = strings.TrimSpace(a.settingsDraft.FontFamily)
+			a.settings.FontSize = a.settingsDraft.FontSize
 			a.saveSettings()
 			if a.terms != nil {
 				a.terms.SetFontSize(a.settings.FontSize)
+				a.terms.SetFontFamily(a.settings.FontFamily)
 				a.terms.SetShell(a.settings.Shell)
 			}
 			a.settingsOpen = false
-			a.message = "Settings applied. Shell changes apply to new sessions."
+			a.message = "Settings applied. Shell: new sessions only."
 		})
 	})
-	n := 0
-	for _, ch := range a.commitStatus.Changes {
-		if ch.Kind == gitrepo.Staged {
-			n++
-		}
+	if !a.settingsOpen {
+		a.settingsDraftOpen = false
 	}
-	tavuDialog(c.Key("commit"), &a.commitOpen, "Commit Staged Changes", "Only these staged files will be committed. Status is checked again before committing.", 640, 350, func(width, _ float32) {
-		tavuDialogSection(c, fmt.Sprintf("Staged files: %d", n), func() {
-			ui.Scroll(c).Height(120).Width(width).Children(func() {
-				for _, ch := range a.commitStatus.Changes {
-					if ch.Kind != gitrepo.Staged {
-						continue
-					}
-					ui.Row(c.Key(ch.Path)).FillWidth().Gap(8).Padding(5, 0).Children(func() {
-						ui.Text(c, ch.Code).Font("monospace").FontSize(11).TextColor(accent).Width(22).Shrink(0)
-						ui.Text(c, ch.Path).FontSize(12).SingleLine().Grow(1).MinWidth(0)
-					})
-				}
-			})
-		})
-		tavuDialogSection(c, "Message", func() {
-			tavuDialogField(ui.TextArea(c, &a.commitMessage)).Height(100).Width(width).Label("Commit Message").Placeholder("Enter a commit message")
-		})
-		if a.message != "" {
-			ui.Text(c, a.message).FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(width)
-		}
+	renameTerminal := a.renameTerminalID != ""
+	tavuDialog(c.Key("rename-terminal"), &renameTerminal, "Rename Terminal", "Leave blank for the automatic name.", 460, 88, func(width, _ float32) {
+		tavuDialogField(ui.TextInput(c, &a.terminalNameDraft)).Label("Terminal Name").Placeholder("e.g. Dev server").Width(width).AutoFocus()
 	}, func() {
-		tavuDialogButton(c, "Cancel", false).Disabled(a.busy).OnClick(func() { a.commitOpen = false })
-		tavuDialogButton(c, "Commit", true).Disabled(a.busy || n == 0 || strings.TrimSpace(a.commitMessage) == "").OnClick(a.commit)
+		tavuDialogButton(c, "Cancel", false).OnClick(func() { a.renameTerminalID = ""; a.terminalNameDraft = "" })
+		tavuDialogButton(c, "Save", true).Label("Save Name").Disabled(a.terms == nil).OnClick(func() {
+			if err := a.terms.RenameSession(a.renameTerminalID, a.terminalNameDraft); err != nil {
+				a.fail(err)
+				return
+			}
+			a.renameTerminalID = ""
+			a.terminalNameDraft = ""
+		})
 	})
+	if !renameTerminal {
+		a.renameTerminalID = ""
+		a.terminalNameDraft = ""
+	}
 	editing := a.editingComment != ""
-	tavuDialog(c.Key("edit-comment"), &editing, "Edit Comment", "Update the comment. Its original code and location stay attached.", 580, 220, func(width, height float32) {
+	tavuDialog(c.Key("edit-comment"), &editing, "Edit Comment", "Original code and location stay attached.", 580, 220, func(width, height float32) {
 		tavuDialogField(ui.TextArea(c, &a.commentDraft)).Width(width).Height(height).Label("Comment Text")
 	}, func() {
 		tavuDialogButton(c, "Cancel", false).OnClick(func() { a.editingComment = ""; a.commentDraft = "" })
-		tavuDialogButton(c, "Save Comment", true).Disabled(strings.TrimSpace(a.commentDraft) == "").OnClick(func() {
+		tavuDialogButton(c, "Save", true).Label("Save Comment").Disabled(strings.TrimSpace(a.commentDraft) == "").OnClick(func() {
 			a.fail(a.state.Review.EditComment(a.editingComment, a.commentDraft))
 			a.editingComment = ""
 			a.commentDraft = ""
@@ -121,16 +124,16 @@ func (a *App) dialogs(c *ui.Context) {
 	if !editing {
 		a.editingComment = ""
 	}
-	if ui.AlertDialog(c.Key("close-session"), &a.confirmClose, "Close Terminal?", "Processes may still be running. Only this Tavu session will close.", "Cancel", "Close Terminal") == 1 {
+	if ui.AlertDialog(c.Key("close-session"), &a.confirmClose, "Close Terminal?", "This session may still have running processes.", "Cancel", "Close Terminal") == 1 {
 		a.closeTerminal(a.closeID)
 	}
-	if ui.AlertDialog(c.Key("quit"), &a.confirmQuit, "Quit Tavu?", "Active terminals will close. Review data is saved; processes and commands are not restored.", "Cancel", "Quit Tavu") == 1 {
+	if ui.AlertDialog(c.Key("quit"), &a.confirmQuit, "Quit Tavu?", "Closes active terminals and saves reviews. Processes and commands aren't restored.", "Cancel", "Quit Tavu") == 1 {
 		a.shutdown()
 	}
-	if ui.AlertDialog(c.Key("switch-project"), &a.confirmProject, "Open Another Folder?", "Current terminals will close. Review data is saved.", "Cancel", "Open Folder") == 1 {
+	if ui.AlertDialog(c.Key("switch-project"), &a.confirmProject, "Switch Folder?", "Closes current terminals and saves reviews.", "Cancel", "Open Folder") == 1 {
 		a.openProject(a.pendingProject)
 	}
-	if ui.AlertDialog(c.Key("clean-snapshots"), &a.confirmClean, "Clear Snapshots?", "Delete saved comparison versions. Comments and their code excerpts are kept.", "Cancel", "Clear Snapshots") == 1 {
+	if ui.AlertDialog(c.Key("clean-snapshots"), &a.confirmClean, "Clear Snapshots?", "Deletes snapshots. Comments and their code are kept.", "Cancel", "Clear Snapshots") == 1 {
 		a.clearHistory()
 	}
 }

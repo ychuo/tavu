@@ -8,6 +8,8 @@ License: ISC; the upstream license is preserved verbatim in LICENSE.txt.
 The original SVG set was copied byte-for-byte from the official release source. `chevron-up.svg` was added in the corrective UI pass: it uses the existing Lucide SVG envelope and the Lucide `m18 15-6-6-6 6` path verified in Mayoi at commit `5581ec023dc0cb184536b8610a27bc4fb3d8b825`, `cmd/mayoi/icons.go`. Its local bytes and checksum are recorded below.
 `more-horizontal.svg` retains the requested application filename and contains upstream `icons/ellipsis.svg`, the canonical icon for the `more-horizontal` alias.
 
+`replace-one.svg` is a local adaptation of the pinned `replace-all.svg`, not an unmodified upstream asset. It retains the original arrow and one target square, removes the repeated targets and source outlines, and translates the retained shapes six SVG units right to center them in the 24-unit viewBox. Its local SHA-256 is recorded below; the original ISC attribution applies.
+
 Mayoi uses Lucide as well, but the original assets were obtained directly from the official Lucide repository. The added chevron-up path has the separate provenance recorded above.
 
 | Local file | Upstream file | SHA-256 |
@@ -50,3 +52,9 @@ Mayoi uses Lucide as well, but the original assets were obtained directly from t
 | minus.svg | [icons/minus.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/minus.svg) | `a0c743ab6dbf545d8a6e19ef3874f48ede686ce68d25e231bd81f540d97b1f19` |
 
 | chevron-up.svg | [Lucide path used by Mayoi](https://github.com/sorrycc/Mayoi/blob/5581ec023dc0cb184536b8610a27bc4fb3d8b825/cmd/mayoi/icons.go) | `d09f13fcbef3c493ead7e4663b5ee91804fec38d5edb5e7cc3acfbd547641cf4` |
+| case-sensitive.svg | [icons/case-sensitive.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/case-sensitive.svg) | `32c77fb251ec4b7ecc6dd6e35d8489b4cf974bac876635dfad3a9105f96d7def` |
+| whole-word.svg | [icons/whole-word.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/whole-word.svg) | `765a70faebbdb145e029040ec777d58e8ce7536fc2db395d91822421ce55ebe4` |
+| regex.svg | [icons/regex.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/regex.svg) | `d58a62a2bdb82f1dc8ae7a67f96448c41ce478bee0cf34ef7df2b8035ec61660` |
+| replace-all.svg | [icons/replace-all.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/replace-all.svg) | `65b9bc62d401a1de0546bce542af8773cdeca98208af8f58ad9d1af5b696166a` |
+| list-collapse.svg | [icons/list-collapse.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/list-collapse.svg) | `8750efc20a5bf7c5124bee6183d226ebd615649d7ca3b43e13495202659fe3b3` |
+| replace-one.svg | Local adaptation of [icons/replace-all.svg](https://github.com/lucide-icons/lucide/blob/f12b0de177fbc2a6795e99be065887e72b237123/icons/replace-all.svg) as described above | `8a5b8a935697c538107a4b76fed4d3b2de8b8065ac298aef828ffc9a1bb3865d` |

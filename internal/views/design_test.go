@@ -151,11 +151,11 @@ func TestDesignSidebarIconNavigation(t *testing.T) {
 	a := designFixture(t)
 	tt := designTester(a, 1380, 920)
 	designClick(t, tt, "Explorer")
-	if a.sidebarTab != 0 || !tt.HasText("Find File") || !tt.HasText("internal/files/safe_reader.go") {
+	if a.sidebarTab != 0 || !tt.HasText("Quick Open") || tt.HasText("Find File") || !tt.HasText("internal/files/safe_reader.go") {
 		t.Fatal("file icon did not reveal the project file tree")
 	}
 	designClick(t, tt, "Search")
-	if a.sidebarTab != 2 || !tt.HasText("Search in Files") || !tt.HasText("internal/files/safe_reader.go:14") {
+	if a.sidebarTab != 2 || !tt.HasText("Search in Files") || !tt.HasText("internal/files/safe_reader.go:14:1") {
 		t.Fatal("search icon did not reveal query and results")
 	}
 	designClick(t, tt, "Source Control")
@@ -271,16 +271,24 @@ func TestDesignReaderMenuAndDocumentLifecycle(t *testing.T) {
 			t.Fatalf("closing %s did not return to the preserved comparison", item.suffix)
 		}
 	}
-	for _, label := range []string{"Focus Terminal", "Split View", "Focus Review"} {
-		designChooseLayout(t, tt, label)
+	for _, preferred := range []string{"terminal", "split", "review"} {
+		a.setMode(preferred)
+		tt.Frame()
 		if a.current() != diffDoc || a.current().Diff != originalState {
-			t.Fatalf("%s recreated the persistent diff state", label)
+			t.Fatalf("%s preference recreated the persistent diff state", preferred)
+		}
+		if a.effectivePaneMode() != "review" {
+			t.Fatal("layout preference showed an empty terminal beside the only document")
+		}
+		if _, ok := tt.Find("More Actions"); !ok {
+			t.Fatal("reader controls disappeared while a document remained open")
 		}
 	}
 	designClick(t, tt, "Close File "+diffDoc.Label)
-	if a.current() != nil || !tt.HasText("Select a file or change to get started.") {
-		t.Fatal("closing the last tab did not show the reader empty state")
+	if a.current() != nil || a.effectivePaneMode() != "empty" || !tt.HasText("Nothing open") {
+		t.Fatal("closing the last tab did not show the unified workspace empty state")
 	}
+	requireDesignControlsInside(t, tt, 1380, 920, "Open File…", "New Terminal", "Open Folder…")
 }
 
 func TestDesignResponsiveControls(t *testing.T) {
@@ -291,7 +299,7 @@ func TestDesignResponsiveControls(t *testing.T) {
 			if size[0] == 760 {
 				writeDesignScreenshot(t, tt, "TAVU_DESIGN_SMALL_SCREENSHOT")
 			}
-			requireDesignControlsInside(t, tt, size[0], size[1], "Toggle Sidebar", "Open Folder", "Focus Terminal", "Split View", "Focus Review", "Settings", "Explorer", "Search", "Source Control", "More Actions", "Inline", "Side by Side", "Mark as Seen", "Add Comment", "Close File "+a.current().Label)
+			requireDesignControlsInside(t, tt, size[0], size[1], "Toggle Sidebar", "Switch Project", "New Terminal", "Split View", "Maximize Reader", "Settings", "Explorer", "Search", "Source Control", "More Actions", "Inline", "Side by Side", "Mark Seen", "Add Comment", "Close File "+a.current().Label)
 			designClick(t, tt, "Search")
 			requireDesignControlsInside(t, tt, size[0], size[1], "Search in Files", "Run Search", "More Actions")
 			designClick(t, tt, "Toggle Sidebar")
@@ -304,9 +312,14 @@ func TestDesignResponsiveControls(t *testing.T) {
 }
 
 func TestDesignSplitLayoutAdaptsWithoutReplacingDocument(t *testing.T) {
+	if os.Getenv("TAVU_TEST_TERMINAL") != "1" {
+		t.Skip("set TAVU_TEST_TERMINAL=1 to exercise both real workspace panes")
+	}
 	a := designFixture(t)
 	a.mode = "split"
 	a.commentsOpen = true
+	attachDesignFixtureTerminals(t, a)
+	originalSessions := a.terms.Sessions()
 	document, diff := a.current(), a.current().Diff
 	tt := designTester(a, 1380, 920)
 	for _, size := range [][2]int{{1380, 920}, {760, 560}, {1380, 920}} {
@@ -327,6 +340,15 @@ func TestDesignSplitLayoutAdaptsWithoutReplacingDocument(t *testing.T) {
 		}
 		if a.current() != document || a.current().Diff != diff {
 			t.Fatal("responsive layout replaced the active comparison")
+		}
+		currentSessions := a.terms.Sessions()
+		if len(currentSessions) != len(originalSessions) {
+			t.Fatal("responsive layout changed the terminal session count")
+		}
+		for i, session := range currentSessions {
+			if session.ID != originalSessions[i].ID || session.Term != originalSessions[i].Term {
+				t.Fatal("responsive layout replaced a terminal session")
+			}
 		}
 		if size[0] == 760 {
 			writeDesignScreenshot(t, tt, "TAVU_DESIGN_SPLIT_SMALL_SCREENSHOT")
@@ -445,10 +467,10 @@ func TestDesignRealSessionsSurviveWorkspaceLayouts(t *testing.T) {
 	waitDesignTerminal(t, tt, first, "\nFIRST_FIXTURE_SESSION")
 	waitDesignTerminal(t, tt, second, "\nSECOND_FIXTURE_SESSION")
 	document, state := a.current(), a.current().Diff
-	designChooseLayout(t, tt, "Focus Review")
+	designChooseLayout(t, tt, "Maximize Reader")
 	first.Term.Send([]byte("printf '\\nHIDDEN_FIXTURE_SESSION\\n'\n"))
 	waitDesignTerminal(t, tt, first, "\nHIDDEN_FIXTURE_SESSION")
-	designChooseLayout(t, tt, "Focus Terminal")
+	designChooseLayout(t, tt, "Maximize Terminal")
 	designChooseLayout(t, tt, "Split View")
 	tt.SetSize(760, 560)
 	tt.Frame()
@@ -534,18 +556,13 @@ func TestDesignSmallWindowModalActions(t *testing.T) {
 	})
 	t.Run("commit", func(t *testing.T) {
 		a := designFixture(t)
-		a.commitStatus = a.status
+		a.reviewTab = 0
 		a.commitMessage = "fix: keep project reads inside the workspace"
-		a.commitOpen = true
 		tt := designTester(a, width, height)
-		requireDesignControlsInside(t, tt, width, height, "Commit Staged Changes", "Commit Message", "Cancel", "Commit")
+		requireDesignControlsInside(t, tt, width, height, "Commit Staged Changes", "Commit Message", "Toggle Staged Changes")
 		writeDesignScreenshot(t, tt, "TAVU_DESIGN_COMMIT_SCREENSHOT")
 		// Check the real commit action's geometry, but never invoke it: this
 		// fixture contains no actual Git repository or writable service.
-		designClick(t, tt, "Cancel")
-		if a.commitOpen || a.commitMessage == "" {
-			t.Fatal("cancel did not close the modal while preserving its draft")
-		}
 	})
 }
 
@@ -631,8 +648,7 @@ func TestDesignEnglishChromeAndDialogs(t *testing.T) {
 				a.previewOpen = true
 				a.preview = review.Export("design-fixture-snapshot", a.state.Review.Unresolved())
 			case "commit":
-				a.commitOpen = true
-				a.commitStatus = a.status
+				a.reviewTab = 0
 				a.commitMessage = "fix: preserve review context"
 			}
 			tt := designTester(a, 1380, 920)

@@ -12,6 +12,52 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func TestManagerFontPreferences(t *testing.T) {
+	m := NewManager(Config{})
+	if m.config.FontSize != 13 {
+		t.Fatalf("default font size: %v", m.config.FontSize)
+	}
+	m = NewManager(Config{FontSize: 14, FontFamily: " Example Mono "})
+	if m.config.FontSize != 14 || m.config.FontFamily != "Example Mono" {
+		t.Fatalf("explicit preferences were not preserved: %+v", m.config)
+	}
+	m.SetFontFamily(" Example Nerd Font ")
+	m.SetFontSize(12)
+	if m.config.FontFamily != "Example Nerd Font" || m.config.FontSize != 12 {
+		t.Fatalf("font preferences were not updated together: %+v", m.config)
+	}
+	m.SetFontSize(50)
+	if m.config.FontSize != 12 {
+		t.Fatal("accepted out-of-range font size")
+	}
+	m.SetFontFamily("")
+	if m.config.FontFamily != "" {
+		t.Fatal("could not restore system monospace")
+	}
+}
+
+func TestRenameSessionSurvivesProcessTitleUpdates(t *testing.T) {
+	m := NewManager(Config{})
+	m.sessions = []Session{{ID: "one", Label: "zsh", Title: "project"}, {ID: "two", Label: "zsh", Title: "other"}}
+	if err := m.RenameSession("one", "  Dev\nserver  "); err != nil {
+		t.Fatal(err)
+	}
+	m.updateTitle("one", "new process title")
+	got := m.Sessions()
+	if got[0].CustomLabel != "Devserver" || got[0].Title != "new process title" || got[0].Label != "zsh" || got[1].CustomLabel != "" {
+		t.Fatalf("rename affected process identity or another session: %+v", got)
+	}
+	if err := m.RenameSession("one", " \n "); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Sessions()[0]; got.CustomLabel != "" || got.Title != "new process title" {
+		t.Fatalf("empty rename did not restore automatic naming: %+v", got)
+	}
+	if err := m.RenameSession("missing", "Name"); err == nil {
+		t.Fatal("rename accepted missing session")
+	}
+}
+
 // This test deliberately exercises a real PTY, libghostty-vt and MyGo's
 // headless UI. Opt in after installing the matching native library; ordinary
 // unit tests do not trigger a dependency download.
@@ -48,10 +94,13 @@ func TestRealShellNativeView(t *testing.T) {
 	tt.Type("printf '\\nSIZE:'; stty size")
 	tt.Key(0, ui.KeyEnter)
 	waitForOutput(t, tt, session.Term, fmt.Sprintf("\nSIZE:%d %d", newRows, newCols))
-	tt.Type("printf '\\nSLEEP_READY\\n'; sleep 30")
+	tt.Type("printf '\\nSLEEP_READY\\n'; sleep 30; printf '\\nSLEEP_INTERRUPTED\\n'")
 	tt.Key(0, ui.KeyEnter)
 	waitForOutput(t, tt, session.Term, "\nSLEEP_READY")
 	tt.Key(ui.Ctrl, ui.KeyC)
+	// SIGINT flushes the PTY input queue. Wait for the interrupted command
+	// to return before typing again; otherwise those keystrokes can be lost.
+	waitForOutput(t, tt, session.Term, "\nSLEEP_INTERRUPTED")
 	tt.Type("printf '\\nINTERRUPTED\\n'")
 	tt.Key(0, ui.KeyEnter)
 	waitForOutput(t, tt, session.Term, "\nINTERRUPTED")

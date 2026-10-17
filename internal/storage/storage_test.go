@@ -25,7 +25,7 @@ func TestSettingsAndProjectIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.FontSize != 14 || !settings.Layout.SidebarVisible || settings.Layout.TerminalRatio != .48 {
+	if settings.FontSize != 13 || !settings.Layout.SidebarVisible || settings.Layout.TerminalRatio != .48 || settings.Layout.SidebarWidth != 280 {
 		t.Fatalf("defaults: %+v", settings)
 	}
 	settings.RecentProjects = []string{"/a", "/b", "/a"}
@@ -58,6 +58,55 @@ func TestSettingsAndProjectIsolation(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte(`"schemaVersion": 1`)) {
 		t.Fatal("missing schema")
+	}
+}
+
+func TestPreferenceMigrationKeepsExplicitFontAndLayout(t *testing.T) {
+	s := testStore(t)
+	path := filepath.Join(s.root, "settings.json")
+	// Older settings did not include fontFamily or sidebarWidth.
+	data := []byte(`{"schemaVersion":1,"data":{"fontSize":14,"layout":{"mode":"terminal","sidebarVisible":true,"terminalRatio":0.65}}}`)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := s.LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.FontSize != 14 || settings.FontFamily != "" || settings.Layout.Mode != "terminal" || settings.Layout.TerminalRatio != .65 || settings.Layout.SidebarWidth != 280 {
+		t.Fatalf("migration replaced existing preferences: %+v", settings)
+	}
+	settings.FontFamily = "  Example Mono Nerd Font  "
+	settings.Layout.SidebarWidth = 360
+	if err := s.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := s.LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.FontFamily != "Example Mono Nerd Font" || loaded.FontSize != 14 || loaded.Layout.SidebarWidth != 360 {
+		t.Fatalf("font family/sidebar width did not round trip: %+v", loaded)
+	}
+}
+
+func TestInvalidFontSizeAndSidebarWidthRestoreDefaults(t *testing.T) {
+	for _, width := range []float32{0, 199, 481} {
+		settings := DefaultSettings()
+		settings.FontSize = 40
+		settings.Layout.SidebarWidth = width
+		settings.normalize()
+		if settings.FontSize != 13 || settings.Layout.SidebarWidth != 280 {
+			t.Fatalf("invalid settings not repaired: %+v", settings)
+		}
+	}
+	for _, width := range []float32{200, 480} {
+		settings := DefaultSettings()
+		settings.Layout.SidebarWidth = width
+		settings.normalize()
+		if settings.Layout.SidebarWidth != width {
+			t.Fatalf("valid width %v was replaced: %+v", width, settings)
+		}
 	}
 }
 

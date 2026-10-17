@@ -30,6 +30,7 @@ type Layout struct {
 	Mode           string  `json:"mode"`
 	SplitTerminals bool    `json:"splitTerminals"`
 	SidebarVisible bool    `json:"sidebarVisible"`
+	SidebarWidth   float32 `json:"sidebarWidth"`
 	TerminalRatio  float32 `json:"terminalRatio"`
 }
 
@@ -38,24 +39,29 @@ type Settings struct {
 	LastProject      string   `json:"lastProject"`
 	Shell            string   `json:"shell"`
 	FontSize         float32  `json:"fontSize"`
+	FontFamily       string   `json:"fontFamily"`
 	Layout           Layout   `json:"layout"`
 	MaxSnapshotBytes int64    `json:"maxSnapshotBytes"`
 	MaxSnapshots     int      `json:"maxSnapshots"`
 }
 
 func DefaultSettings() Settings {
-	return Settings{FontSize: 14, Layout: Layout{Mode: "split", SidebarVisible: true, TerminalRatio: .48}, MaxSnapshotBytes: DefaultMaxSnapshotBytes, MaxSnapshots: DefaultMaxSnapshots}
+	return Settings{FontSize: 13, Layout: Layout{Mode: "split", SidebarVisible: true, SidebarWidth: 280, TerminalRatio: .48}, MaxSnapshotBytes: DefaultMaxSnapshotBytes, MaxSnapshots: DefaultMaxSnapshots}
 }
 
 func (s *Settings) normalize() {
 	if s.FontSize < 8 || s.FontSize > 32 {
-		s.FontSize = 14
+		s.FontSize = 13
 	}
+	s.FontFamily = strings.TrimSpace(s.FontFamily)
 	if s.Layout.Mode != "split" && s.Layout.Mode != "terminal" && s.Layout.Mode != "review" {
 		s.Layout.Mode = "split"
 	}
 	if s.Layout.TerminalRatio < .15 || s.Layout.TerminalRatio > .85 {
 		s.Layout.TerminalRatio = .48
+	}
+	if s.Layout.SidebarWidth < 200 || s.Layout.SidebarWidth > 480 {
+		s.Layout.SidebarWidth = 280
 	}
 	if s.MaxSnapshotBytes < 1<<20 || s.MaxSnapshotBytes > 1<<30 {
 		s.MaxSnapshotBytes = DefaultMaxSnapshotBytes

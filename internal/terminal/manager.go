@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,25 +19,27 @@ import (
 const ScrollbackBytes = 8 << 20
 
 type Config struct {
-	Dir      string
-	Shell    string // executable path/name only; never a shell expression
-	FontSize float32
-	Dispatch func(func()) // schedules a callback on MyGo's UI thread
-	OnChange func()
-	OnLink   func(LinkTarget)
-	OnError  func(error)
+	Dir        string
+	Shell      string // executable path/name only; never a shell expression
+	FontSize   float32
+	FontFamily string
+	Dispatch   func(func()) // schedules a callback on MyGo's UI thread
+	OnChange   func()
+	OnLink     func(LinkTarget)
+	OnError    func(error)
 }
 
 // Session is a point-in-time status copy; Term remains the same instance until
 // explicitly closed. Show it in at most one terminal.View per frame.
 type Session struct {
-	ID       string
-	Label    string // stable configured-shell name; Title may change via OSC
-	Title    string
-	Term     *mygoterm.Terminal
-	Exited   bool
-	ExitCode int
-	Error    string
+	ID          string
+	Label       string // stable configured-shell name; Title may change via OSC
+	CustomLabel string // optional user name, independent of the process title
+	Title       string
+	Term        *mygoterm.Terminal
+	Exited      bool
+	ExitCode    int
+	Error       string
 }
 
 type Manager struct {
@@ -50,8 +51,9 @@ type Manager struct {
 
 func NewManager(config Config) *Manager {
 	if config.FontSize < 8 || config.FontSize > 32 {
-		config.FontSize = 14
+		config.FontSize = 13
 	}
+	config.FontFamily = strings.TrimSpace(config.FontFamily)
 	return &Manager{config: config}
 }
 
@@ -81,14 +83,12 @@ func (m *Manager) NewSession() (Session, error) {
 	if err != nil || !info.IsDir() {
 		return Session{}, fmt.Errorf("Cannot start a terminal in the project directory: %s", dir)
 	}
-	var command []string
+	command, err := loginShellCommand(m.config.Shell)
+	if err != nil {
+		return Session{}, fmt.Errorf("Shell %q was not found: %w", m.config.Shell, err)
+	}
 	label := "Terminal"
 	if shell := m.config.Shell; shell != "" {
-		path, err := exec.LookPath(shell)
-		if err != nil {
-			return Session{}, fmt.Errorf("Configured shell %q was not found: %w", shell, err)
-		}
-		command = []string{path, "-l"}
 		label = cleanTitle(filepath.Base(shell))
 	}
 	var idBytes [12]byte
@@ -98,7 +98,8 @@ func (m *Manager) NewSession() (Session, error) {
 	id := hex.EncodeToString(idBytes[:])
 	term, err := mygoterm.New(mygoterm.Options{
 		Command: command, Dir: dir, Scrollback: ScrollbackBytes,
-		Font:  mygoterm.Font{Size: m.config.FontSize},
+		Env:   []string{"TERM_PROGRAM=Tavu"},
+		Font:  mygoterm.Font{Family: terminalFontFamily(m.config.FontFamily), Size: m.config.FontSize},
 		Theme: forestTheme(), DarkTheme: forestTheme(),
 		ClipboardRead: mygoterm.ClipboardDeny, NoClipboardWrite: true,
 		OnExit: func(code int) {
@@ -116,15 +117,7 @@ func (m *Manager) NewSession() (Session, error) {
 			m.notify()
 		},
 		OnTitle: func(title string) {
-			m.mu.Lock()
-			for i := range m.sessions {
-				if m.sessions[i].ID == id {
-					m.sessions[i].Title = cleanTitle(title)
-					break
-				}
-			}
-			m.mu.Unlock()
-			m.notify()
+			m.updateTitle(id, title)
 		},
 		OpenLink: func(raw string) bool {
 			// true consumes every link, including invalid protocols: returning
@@ -169,6 +162,44 @@ func (m *Manager) Sessions() []Session {
 	return append([]Session(nil), m.sessions...)
 }
 
+func (m *Manager) updateTitle(id, title string) {
+	m.mu.Lock()
+	for i := range m.sessions {
+		if m.sessions[i].ID == id {
+			m.sessions[i].Title = cleanTitle(title)
+			break
+		}
+	}
+	m.mu.Unlock()
+	m.notify()
+}
+
+// RenameSession sets a user-facing name without sending input to the shell.
+// An empty name restores the automatic label; OSC updates remain available
+// for the full process-title tooltip and never overwrite the custom name.
+func (m *Manager) RenameSession(id, label string) error {
+	label = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, label))
+	if label != "" {
+		label = cleanTitle(label)
+	}
+	m.mu.Lock()
+	for i := range m.sessions {
+		if m.sessions[i].ID == id {
+			m.sessions[i].CustomLabel = label
+			m.mu.Unlock()
+			m.notify()
+			return nil
+		}
+	}
+	m.mu.Unlock()
+	return errors.New("Terminal session is no longer available")
+}
+
 // Close must be called only after the UI confirms closing an active session.
 // MyGo hangs up only the PTY it owns, with a bounded process-group fallback.
 func (m *Manager) Close(id string) error {
@@ -209,8 +240,22 @@ func (m *Manager) SetFontSize(size float32) {
 	}
 	m.mu.Lock()
 	m.config.FontSize = size
+	family := terminalFontFamily(m.config.FontFamily)
 	for _, session := range m.sessions {
-		session.Term.SetFont(mygoterm.Font{Size: size})
+		session.Term.SetFont(mygoterm.Font{Family: family, Size: size})
+	}
+	m.mu.Unlock()
+}
+
+// SetFontFamily applies to existing and future terminals without restarting
+// their processes. Empty uses MyGo's system monospace font. Installed Nerd Font
+// symbols are a fallback without changing the user's saved family preference.
+func (m *Manager) SetFontFamily(family string) {
+	m.mu.Lock()
+	m.config.FontFamily = strings.TrimSpace(family)
+	resolved := terminalFontFamily(m.config.FontFamily)
+	for _, session := range m.sessions {
+		session.Term.SetFont(mygoterm.Font{Family: resolved, Size: m.config.FontSize})
 	}
 	m.mu.Unlock()
 }

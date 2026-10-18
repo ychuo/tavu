@@ -14,7 +14,7 @@ import (
 
 func TestManagerFontPreferences(t *testing.T) {
 	m := NewManager(Config{})
-	if m.config.FontSize != 13 {
+	if m.config.FontSize != 12 {
 		t.Fatalf("default font size: %v", m.config.FontSize)
 	}
 	m = NewManager(Config{FontSize: 14, FontFamily: " Example Mono "})

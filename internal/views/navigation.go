@@ -35,6 +35,12 @@ func (a *App) Menu() *mygo.Menu {
 			item("Maximize Terminal", "", func() { a.setMode("terminal") }),
 			item("Split View", "", func() { a.setMode("split") }),
 			item("Maximize Reader", "", func() { a.setMode("review") }),
+			mygo.Separator(),
+			item("Automatic Layout", "", func() { a.setArrangement("auto") }),
+			item("Side by Side Layout", "", func() { a.setArrangement("horizontal") }),
+			item("Stacked Layout", "", func() { a.setArrangement("vertical") }),
+			mygo.Separator(),
+			item("Settings…", "CmdOrCtrl+,", func() { a.settingsOpen = true }),
 		}},
 		{Role: mygo.RoleWindowMenu},
 	})

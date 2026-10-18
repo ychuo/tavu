@@ -151,22 +151,34 @@ const (
 	NewSide Side = "new"
 )
 
+type CommentScope string
+
+const (
+	LineScope CommentScope = "line"
+	FileScope CommentScope = "file"
+)
+
 type Comment struct {
-	ID          string    `json:"id"`
-	SnapshotID  string    `json:"snapshotId"`
-	Path        string    `json:"path"`
-	OldPath     string    `json:"oldPath,omitempty"`
-	Kind        string    `json:"kind"`
-	Fingerprint string    `json:"fingerprint"`
-	Side        Side      `json:"side"`
-	StartLine   int       `json:"startLine"`
-	EndLine     int       `json:"endLine"`
-	Code        []byte    `json:"code"`
-	Body        string    `json:"body"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
-	Resolved    bool      `json:"resolved"`
+	ID          string       `json:"id"`
+	SnapshotID  string       `json:"snapshotId"`
+	Path        string       `json:"path"`
+	OldPath     string       `json:"oldPath,omitempty"`
+	Kind        string       `json:"kind"`
+	Fingerprint string       `json:"fingerprint"`
+	Scope       CommentScope `json:"scope,omitempty"`
+	Side        Side         `json:"side,omitempty"`
+	StartLine   int          `json:"startLine,omitempty"`
+	EndLine     int          `json:"endLine,omitempty"`
+	Code        []byte       `json:"code,omitempty"`
+	Body        string       `json:"body"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	UpdatedAt   time.Time    `json:"updatedAt"`
+	Resolved    bool         `json:"resolved"`
 }
+
+// IsFileComment leaves legacy comments without an explicit scope as line
+// comments. A file comment belongs to the entire captured comparison.
+func (c Comment) IsFileComment() bool { return c.Scope == FileScope }
 
 func (c Comment) BasedOnOldVersion(current Comparison) bool {
 	return c.Fingerprint != current.Fingerprint()
@@ -223,10 +235,26 @@ func (s *State) AddComment(snapshotID string, c Comparison, side Side, start, en
 		return Comment{}, err
 	}
 	now := time.Now().UTC()
-	comment := Comment{ID: id, SnapshotID: snapshotID, Path: c.Path, OldPath: c.OldPath, Kind: c.Kind, Fingerprint: c.Fingerprint(), Side: side, StartLine: start, EndLine: end, Code: code, Body: body, CreatedAt: now, UpdatedAt: now}
+	comment := Comment{ID: id, SnapshotID: snapshotID, Path: c.Path, OldPath: c.OldPath, Kind: c.Kind, Fingerprint: c.Fingerprint(), Scope: LineScope, Side: side, StartLine: start, EndLine: end, Code: code, Body: body, CreatedAt: now, UpdatedAt: now}
 	s.Comments = append(s.Comments, comment)
 	// Return an independent copy so caller edits cannot alter stored code.
 	comment.Code = bytes.Clone(comment.Code)
+	return comment, nil
+}
+
+// AddFileComment attaches an opinion to the comparison version without
+// inventing a line range or copying the entire file into comment storage.
+func (s *State) AddFileComment(snapshotID string, c Comparison, body string) (Comment, error) {
+	if strings.TrimSpace(body) == "" {
+		return Comment{}, errors.New("Enter a review comment")
+	}
+	id, err := newID()
+	if err != nil {
+		return Comment{}, err
+	}
+	now := time.Now().UTC()
+	comment := Comment{ID: id, SnapshotID: snapshotID, Path: c.Path, OldPath: c.OldPath, Kind: c.Kind, Fingerprint: c.Fingerprint(), Scope: FileScope, Body: body, CreatedAt: now, UpdatedAt: now}
+	s.Comments = append(s.Comments, comment)
 	return comment, nil
 }
 
@@ -316,22 +344,28 @@ func Export(workspaceLabel string, comments []Comment) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "Workspace: %s\nManual review comments:\n", workspaceLabel)
 	for i, c := range comments {
-		side := "new"
-		if c.Side == OldSide {
-			side = "old"
-		}
 		fingerprint := c.Fingerprint
 		if len(fingerprint) > 12 {
 			fingerprint = fingerprint[:12]
 		}
-		fmt.Fprintf(&out, "\n%d. File: %s\n   Version and location: %s · %s · lines %d–%d · %s\n   Code:\n", i+1, c.Path, comparisonLabel(c.Kind), side, c.StartLine, c.EndLine, fingerprint)
-		fence := strings.Repeat("`", max(3, longestBacktickRun(string(c.Code))+1))
-		fmt.Fprintf(&out, "   %stext\n", fence)
-		code := strings.TrimSuffix(strings.TrimSuffix(string(c.Code), "\n"), "\r")
-		for _, line := range strings.Split(code, "\n") {
-			fmt.Fprintf(&out, "   %s\n", strings.TrimSuffix(line, "\r"))
+		fmt.Fprintf(&out, "\n%d. File: %s\n", i+1, c.Path)
+		if c.IsFileComment() {
+			fmt.Fprintf(&out, "   Version and location: %s · File comment · %s\n", comparisonLabel(c.Kind), fingerprint)
+		} else {
+			side := "new"
+			if c.Side == OldSide {
+				side = "old"
+			}
+			fmt.Fprintf(&out, "   Version and location: %s · %s · lines %d–%d · %s\n   Code:\n", comparisonLabel(c.Kind), side, c.StartLine, c.EndLine, fingerprint)
+			fence := strings.Repeat("`", max(3, longestBacktickRun(string(c.Code))+1))
+			fmt.Fprintf(&out, "   %stext\n", fence)
+			code := strings.TrimSuffix(strings.TrimSuffix(string(c.Code), "\n"), "\r")
+			for _, line := range strings.Split(code, "\n") {
+				fmt.Fprintf(&out, "   %s\n", strings.TrimSuffix(line, "\r"))
+			}
+			fmt.Fprintf(&out, "   %s\n", fence)
 		}
-		fmt.Fprintf(&out, "   %s\n   Comment:\n", fence)
+		out.WriteString("   Comment:\n")
 		for _, line := range strings.Split(c.Body, "\n") {
 			fmt.Fprintf(&out, "   %s\n", line)
 		}

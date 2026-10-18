@@ -326,7 +326,7 @@ func TestDesignSplitLayoutAdaptsWithoutReplacingDocument(t *testing.T) {
 		tt.SetSize(size[0], size[1])
 		tt.Frame()
 		requireDesignControlsInside(t, tt, size[0], size[1], "More Actions", "Add Comment", "New Terminal", "Split Terminal")
-		requireDesignControlsInside(t, tt, size[0], size[1], "Review Comment", "Save Comment", "Preview Selected", "Hide Comments")
+		requireDesignControlsInside(t, tt, size[0], size[1], "Review Comment", "Save Comment", "Select Comments", "Hide Comments")
 		reader, readerOK := tt.Find("More Actions")
 		terminal, terminalOK := tt.Find("New Terminal")
 		if !readerOK || !terminalOK {
@@ -366,7 +366,7 @@ func TestDesignReviewScreenshot(t *testing.T) {
 	a := designFixture(t)
 	a.commentsOpen = true
 	tt := designTester(a, 1380, 920)
-	if !tt.HasText("Comments") || !tt.HasText("Snapshot") {
+	if !tt.HasText("Review · 1") || !tt.HasText("Saved Review") {
 		t.Fatal("review preview did not render its snapshot and comment context")
 	}
 	writeDesignScreenshot(t, tt, "TAVU_DESIGN_SCREENSHOT")
@@ -483,6 +483,7 @@ func TestDesignRealSessionsSurviveWorkspaceLayouts(t *testing.T) {
 	if len(got) != 2 || got[0].Term != first.Term || got[1].Term != second.Term || got[0].Exited || got[1].Exited {
 		t.Fatal("workspace layout restarted or closed a real terminal session")
 	}
+	designClick(t, tt, "Select Comments")
 	designClick(t, tt, "Preview Selected")
 	designClick(t, tt, "Copy Comments")
 	comment := a.state.Review.Comments[0].Body

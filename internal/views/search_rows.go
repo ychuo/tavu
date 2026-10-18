@@ -32,9 +32,9 @@ func (a *App) renderSearchResults(c *ui.Context) {
 
 // The whole row owns its hover background; navigation and destructive actions
 // remain sibling buttons, so an action never also opens or collapses a result.
-func searchResultRow(c *ui.Context, key string, selected bool, children func(ui.Element)) {
-	ui.Row(c.Key("result-row:"+key)).Height(28).FillWidth().Padding(1, 12).Children(func() {
-		row := ui.Row(c).Fill().Padding(0, 2).Gap(2).Radius(4).AlignItems(ui.Center)
+func searchResultRow(c *ui.Context, key string, height float32, selected bool, children func(ui.Element)) {
+	ui.Row(c.Key("result-row:"+key)).Height(height).FillWidth().Padding(1, 12).Children(func() {
+		row := ui.Row(c).Fill().Padding(0, 2).Gap(2).Radius(5).AlignItems(ui.Center)
 		if selected {
 			row.Background(activeFill)
 		} else if row.Hovered() {
@@ -65,7 +65,7 @@ func searchResultActions(c *ui.Context, row, body ui.Element, selected bool, bui
 		bar.Invisible()
 		return
 	}
-	background := chrome
+	background := panel
 	if selected {
 		background = activeFill
 	} else if row.Hovered() {
@@ -75,25 +75,35 @@ func searchResultActions(c *ui.Context, row, body ui.Element, selected bool, bui
 }
 
 func (a *App) searchFileRow(c *ui.Context, path string, count int) {
-	searchResultRow(c, "file:"+path, false, func(row ui.Element) {
-		body := ui.ButtonBase(c.Key("file:"+path)).Label("Search File "+path).Background(ui.Transparent).
-			Grow(1).MinWidth(0).FillHeight().Padding(0, 2).Gap(5).AlignItems(ui.Center).Tooltip(path).Children(func() {
-			chevron := "chevron-down"
-			if a.searchCollapsed[path] {
-				chevron = "chevron-right"
-			}
-			glyph(c, chevron).FontSize(10)
-			fileGlyph(c, path, false, false)
-			ui.Text(c, filepath.Base(path)).FontSize(12).SingleLine().MinWidth(0).Grow(1)
-			parent := filepath.ToSlash(filepath.Dir(path))
-			if parent != "." {
-				ui.Text(c, parent).FontSize(10).SingleLine().MinWidth(0).Shrink(2).TextColor(c.Theme().TextMuted)
-			}
-			label := fmt.Sprint(count)
-			if a.searchTruncated && len(a.matches) > 0 && path == a.matches[len(a.matches)-1].Path {
-				label += "+"
-			}
-			ui.Text(c, label).Label("Search Count " + path).FontSize(10).TextColor(c.Theme().TextMuted).Shrink(0)
+	parent := filepath.ToSlash(filepath.Dir(path))
+	height := float32(32)
+	if parent != "." {
+		height = 48
+	}
+	searchResultRow(c, "file:"+path, height, false, func(row ui.Element) {
+		body := ui.ButtonBase(c.Key("file:" + path)).Label("Search File " + path).Background(ui.Transparent).
+			Grow(1).MinWidth(0).FillHeight().Padding(2).Tooltip(path).Children(func() {
+			ui.Column(c).FillWidth().Gap(2).Children(func() {
+				ui.Row(c).FillWidth().Height(23).Gap(5).AlignItems(ui.Center).Children(func() {
+					chevron := "chevron-down"
+					if a.searchCollapsed[path] {
+						chevron = "chevron-right"
+					}
+					glyph(c, chevron).FontSize(10)
+					fileGlyph(c, path, false, false)
+					ui.Text(c, filepath.Base(path)).FontSize(13).SingleLine().MinWidth(0).Grow(1)
+					label := fmt.Sprint(count)
+					if a.searchTruncated && len(a.matches) > 0 && path == a.matches[len(a.matches)-1].Path {
+						label += "+"
+					}
+					ui.Text(c, label).Label("Search Count " + path).FontSize(12).TextColor(c.Theme().TextMuted).Shrink(0)
+				})
+				if parent != "." {
+					ui.Row(c).FillWidth().Padding(0, 0, 0, 36).Children(func() {
+						ui.Text(c, parent).FontSize(12).SingleLine().MinWidth(0).Grow(1).TextColor(c.Theme().TextMuted)
+					})
+				}
+			})
 		}).OnClick(func() {
 			if a.searchCollapsed == nil {
 				a.searchCollapsed = map[string]bool{}
@@ -116,15 +126,20 @@ func (a *App) searchMatchRow(c *ui.Context, m files.Match) {
 	spans, tip := searchMatchSpans(m), m.Text
 	if replacement, ok := a.searchReplacementValues[key]; a.replaceExpanded && ok {
 		spans = searchReplacementSpans(m, replacement)
+		if len(spans) == 4 && spans[1].Strikethrough && spans[1].Text != "" && spans[2].Text != "" {
+			// An empty inline object separates the two highlights visually;
+			// neither the source excerpt nor replacement gains a space byte.
+			spans = []ui.Span{spans[0], spans[1], {Text: "\uFFFC", ObjectWidth: 3, ObjectHeight: 1}, spans[2], spans[3]}
+		}
 		if m.Column >= 0 && m.EndColumn >= m.Column && m.EndColumn <= len(m.Text) {
 			tip = "Before: " + snippetText(m.Text[m.Column:m.EndColumn], 200) + "\nAfter: " + snippetText(replacement, 200)
 		}
 	}
-	searchResultRow(c, key, selected, func(row ui.Element) {
+	searchResultRow(c, key, 28, selected, func(row ui.Element) {
 		body := ui.ButtonBase(c.Key(key)).Label(key).
 			Grow(1).MinWidth(0).FillHeight().Padding(0, 2, 0, 15).Gap(6).Selected(selected).Background(ui.Transparent).TextColor(c.Theme().Text).Tooltip(tip).Children(func() {
-			ui.Text(c, fmt.Sprint(m.Line)).FontSize(10).Width(26).Shrink(0).TextAlign(ui.End).TextColor(c.Theme().TextMuted)
-			ui.RichText(c, spans...).FontSize(11).SingleLine().Grow(1).MinWidth(0)
+			ui.Text(c, fmt.Sprint(m.Line)).FontSize(12).Width(26).Shrink(0).TextAlign(ui.End).TextColor(c.Theme().TextMuted)
+			ui.RichText(c, spans...).FontSize(13).SingleLine().Grow(1).MinWidth(0)
 		}).OnClick(func() {
 			a.searchSelected = key
 			if a.replaceExpanded {

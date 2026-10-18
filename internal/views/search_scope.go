@@ -221,7 +221,7 @@ func (a *App) replacementFeedback(c *ui.Context) {
 		return
 	}
 	ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, a.replaceFeedback).FontSize(10).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(a.replaceFeedback)
+		ui.Text(c, a.replaceFeedback).FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(a.replaceFeedback)
 		if a.replaceUndo != nil {
 			toolButton(c, "undo-2", "Undo Replacement").Size(24, 24).Disabled(a.searchActionsDisabled()).OnClick(a.undoReplacement)
 		}

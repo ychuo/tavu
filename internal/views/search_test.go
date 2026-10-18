@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"tavu/internal/files"
 )
 
@@ -149,6 +150,9 @@ func TestReplacePreviewStaysInlineWithoutWriting(t *testing.T) {
 	d := a.current()
 	if d == nil || !d.Replacement || d.Comparison != nil || d.Diff == nil || d.Diff.Editable || d.Diff.Old.String() != "old value\n" || d.Diff.New.String() != "new value\n" {
 		t.Fatal("result selection did not create a read-only replacement diff in the reader")
+	}
+	if d.Diff.Indicators != editor.DiffClassic {
+		t.Fatal("replacement diff needs explicit add/remove signs as well as color")
 	}
 	// Building the whole workspace also exercises the no-Comparison diff
 	// path. Review-only actions must not be attached to replacement previews.

@@ -84,6 +84,8 @@ type App struct {
 	renameTerminalID, terminalNameDraft     string
 	mode                                    string
 	readerRatio, doubleRatio                float32
+	stackedRatio                            float32
+	arrangement                             string
 	sidebar                                 bool
 	sidebarWidth                            float32
 	sidebarTab                              int
@@ -137,11 +139,18 @@ type App struct {
 	listState                               ui.ListState
 	documents                               []*document
 	selectedDoc                             string
+	readerTabs, terminalTabs                tabRevealState
 	loadCancel                              context.CancelFunc
 	loadID                                  uint64
 	diffLayout                              int
 	commentsOpen                            bool
+	commentsAll                             bool
+	commentsSelecting, commentsResolvedOpen bool
+	expandedComments                        map[string]bool
+	commentList                             ui.ListState
 	commentDraft, editingComment            string
+	commentEditDraft                        string
+	commentFile, commentFocus               bool
 	selectedRange                           editor.DiffLineRange
 	hasRange                                bool
 	previewOpen                             bool
@@ -182,6 +191,8 @@ func New(dataRoot string) *App {
 	a.sidebar = a.settings.Layout.SidebarVisible
 	a.sidebarWidth = a.settings.Layout.SidebarWidth
 	a.readerRatio = (1 - a.settings.Layout.TerminalRatio) * 100
+	a.stackedRatio = a.settings.Layout.StackedReaderRatio * 100
+	a.arrangement = a.settings.Layout.Arrangement
 	if a.readerRatio < 10 || a.readerRatio > 90 {
 		a.readerRatio = 52
 	}
@@ -276,7 +287,9 @@ func (a *App) saveSettings() {
 	a.settings.Layout.Mode = a.mode
 	a.settings.Layout.SidebarVisible = a.sidebar
 	a.settings.Layout.SidebarWidth = a.sidebarWidth
-	a.settings.Layout.TerminalRatio = 1 - a.readerRatio/100
+	a.settings.Layout.TerminalRatio = max(float32(.15), min(float32(.85), 1-a.readerRatio/100))
+	a.settings.Layout.StackedReaderRatio = a.stackedRatio / 100
+	a.settings.Layout.Arrangement = a.arrangement
 	s := a.settings
 	s.RecentProjects = append([]string(nil), s.RecentProjects...)
 	a.queue("settings", func() error { return a.store.SaveSettings(s) })
@@ -361,7 +374,10 @@ func (a *App) selectDocument(id string) {
 	for _, d := range a.documents {
 		if d.ID == id {
 			a.selectedDoc = id
+			a.readerTabs.requested = true
 			a.hasRange = false
+			a.commentFile = false
+			a.commentFocus = false
 			a.focusReader()
 			a.decorate(d)
 			if d.DiskHash != "" || (d.Comparison != nil && d.SnapshotID == "") {
@@ -448,6 +464,8 @@ func newCode(path string, raw []byte) *editor.State {
 func (a *App) closeDocument(id string) {
 	a.cancelDocumentLoad()
 	a.hasRange = false
+	a.commentFile = false
+	a.commentFocus = false
 	for i, d := range a.documents {
 		if d.ID == id {
 			a.documents = append(a.documents[:i], a.documents[i+1:]...)

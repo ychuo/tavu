@@ -31,7 +31,7 @@ func main() {
 			log.Print(err)
 		}
 		a := views.New(data)
-		win := mygo.NewWindow(mygo.WindowOptions{Title: "Tavu", Width: 1380, Height: 920, MinWidth: 760, MinHeight: 560, StateKey: "main", BackgroundColor: "#242624", TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 15}, TitleBarHeight: 44, Content: ui.View(a.View)})
+		win := mygo.NewWindow(mygo.WindowOptions{Title: "Tavu", Width: 1380, Height: 920, MinWidth: 760, MinHeight: 560, StateKey: "main", BackgroundColor: "#0d0f0e", TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 15}, TitleBarHeight: 44, Content: ui.View(a.View)})
 		a.Attach(win)
 		mygo.App.OnSecondInstance(func(_ []string, _ string) { win.Show(); win.Focus() })
 		mygo.App.SetMenu(a.Menu())

@@ -25,7 +25,7 @@ func TestSettingsAndProjectIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.FontSize != 13 || !settings.Layout.SidebarVisible || settings.Layout.TerminalRatio != .48 || settings.Layout.SidebarWidth != 280 {
+	if settings.FontSize != 12 || !settings.Layout.SidebarVisible || settings.Layout.TerminalRatio != .48 || settings.Layout.SidebarWidth != 280 {
 		t.Fatalf("defaults: %+v", settings)
 	}
 	settings.RecentProjects = []string{"/a", "/b", "/a"}
@@ -96,7 +96,7 @@ func TestInvalidFontSizeAndSidebarWidthRestoreDefaults(t *testing.T) {
 		settings.FontSize = 40
 		settings.Layout.SidebarWidth = width
 		settings.normalize()
-		if settings.FontSize != 13 || settings.Layout.SidebarWidth != 280 {
+		if settings.FontSize != 12 || settings.Layout.SidebarWidth != 280 {
 			t.Fatalf("invalid settings not repaired: %+v", settings)
 		}
 	}

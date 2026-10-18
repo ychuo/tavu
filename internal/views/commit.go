@@ -17,8 +17,8 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 		return
 	}
 	viewToken := a.status.Token
-	ui.Column(c.Key("commit-composer:" + a.root)).FillWidth().Gap(6).Children(func() {
-		ui.TextArea(c, &a.commitMessage).Label("Commit Message").Placeholder("Message · ⌘Enter").FillWidth().Lines(2, 4).FontSize(12).Padding(7, 8).Background(panel).Border(1, line).Radius(5).ReadOnly(a.committing).Disabled(a.repo == nil || a.loading).OnTextKey(func(k ui.TextKey) bool {
+	ui.Column(c.Key("commit-composer:" + a.root)).FillWidth().Gap(8).Children(func() {
+		input := ui.TextAreaBase(c, &a.commitMessage).Label("Commit Message").Placeholder("Message · ⌘Enter").FillWidth().Lines(2, 4).FontSize(13).Padding(9, 10).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6).ReadOnly(a.committing).Disabled(a.repo == nil || a.loading).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != ui.Cmd {
 				return false
 			}
@@ -29,6 +29,9 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 			a.submitDisplayedCommit(viewToken, submit)
 			return true
 		})
+		if input.Focused() {
+			input.BorderColor(accent.Alpha(.65))
+		}
 		label := "Commit"
 		if a.committing {
 			label = "Committing…"
@@ -37,10 +40,13 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 		// the previous visible scope while handling that click, rather than
 		// silently accepting status that arrived since the preceding frame.
 		clickToken := a.commitDisplayedToken
-		button := ui.PrimaryButton(c, "").Label("Commit Staged Changes").FillWidth().Height(29).FontSize(12).Justify(ui.Center).Disabled(!a.canCommit()).OnClick(func() { a.submitDisplayedCommit(clickToken, submit) }).Children(func() {
+		button := ui.ButtonBase(c).Label("Commit Staged Changes").FillWidth().Height(32).FontSize(13).Gap(7).Radius(6).AlignItems(ui.Center).Justify(ui.Center).Background(activeFill).TextColor(c.Theme().Text).Disabled(!a.canCommit()).OnClick(func() { a.submitDisplayedCommit(clickToken, submit) }).Children(func() {
 			glyph(c, "check").FontSize(13)
-			ui.Text(c, label).FontSize(12)
+			ui.Text(c, label).FontSize(13)
 		})
+		if button.Hovered() && a.canCommit() {
+			button.Background(c.Theme().Accent.Alpha(.32))
+		}
 		if !button.Clicked() {
 			a.commitDisplayedToken = viewToken
 		}
@@ -54,23 +60,20 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 		if a.hasCommitConflicts() {
 			scope = "Resolve conflicts to commit"
 		}
-		ui.Text(c, scope).FontSize(10).TextColor(c.Theme().TextMuted).FillWidth()
+		ui.Text(c, scope).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
 		if a.commitError != "" {
 			ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Commit failed").FontSize(11).TextColor(c.Theme().Danger).Grow(1)
+				ui.Text(c, "Commit failed").FontSize(12).TextColor(c.Theme().Danger).Grow(1)
 				label := "Details"
 				if a.commitErrorExpanded {
 					label = "Hide Details"
 				}
-				flatButton(c, label).Padding(3).OnClick(func() { a.commitErrorExpanded = !a.commitErrorExpanded }).Children(func() { ui.Text(c, label).FontSize(10) })
+				flatButton(c, label).Padding(3).OnClick(func() { a.commitErrorExpanded = !a.commitErrorExpanded }).Children(func() { ui.Text(c, label).FontSize(12) })
 			})
 			if a.commitErrorExpanded {
-				width := a.sidebarWidth
-				if width == 0 {
-					width = 280
-				}
-				ui.Scroll(c.Key("commit-error")).FillWidth().Height(64).Padding(4, 6).Background(panel).Radius(4).Children(func() {
-					ui.Text(c, a.commitError).FontSize(11).TextColor(c.Theme().TextMuted).MaxWidth(max(148, width-40))
+				width := a.navigationWidth(c)
+				ui.Scroll(c.Key("commit-error")).FillWidth().Height(64).Padding(6, 8).Background(c.Theme().Surface).Radius(6).Children(func() {
+					ui.Text(c, a.commitError).FontSize(12).TextColor(c.Theme().TextMuted).MaxWidth(max(148, width-40))
 				})
 			}
 		}

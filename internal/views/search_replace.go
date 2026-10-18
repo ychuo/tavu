@@ -131,10 +131,10 @@ func (a *App) replacementConfirmation(c *ui.Context) {
 		return
 	}
 	ui.Column(c).FillWidth().Gap(4).Children(func() {
-		ui.Text(c, searchCountLabel(a.replacePlan.Count(), len(a.replaceFiles), "replacement")).FontSize(11).FillWidth()
+		ui.Text(c, searchCountLabel(a.replacePlan.Count(), len(a.replaceFiles), "replacement")).FontSize(12).FillWidth()
 		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Button(c, "Replace All").Label("Confirm Replace All").Description("Save the previewed replacements to disk").Height(26).Padding(0, 8).FontSize(11).Disabled(a.busy || a.loading).OnClick(a.applyReplace)
-			ui.Text(c, "Save to disk").FontSize(10).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine()
+			ui.Button(c, "Replace All").Label("Confirm Replace All").Description("Save the previewed replacements to disk").Height(26).Padding(0, 8).FontSize(13).Disabled(a.busy || a.loading).OnClick(a.applyReplace)
+			ui.Text(c, "Save to disk").FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine()
 			toolButton(c, "x", "Cancel Replace").Size(24, 24).OnClick(a.cancelReplacePreview)
 		})
 	})
@@ -210,7 +210,7 @@ func (a *App) finishReplacementFile(id, gen, revision uint64, file files.Replace
 func (a *App) showReplacementFile(file files.ReplaceFile, match files.Match, reveal bool) {
 	id := "replace:" + file.Path
 	d := &document{ID: id, Path: file.Path, Label: filepath.Base(file.Path) + " · Replace", Notice: "Replacement preview · Not saved", DiskHash: file.Hash, Preview: true, Replacement: true, ReplaceMatch: match, ReplaceRevision: a.searchID,
-		Diff: &editor.DiffState{Old: newCode(file.Path, file.Old).Buffer, New: newCode(file.Path, file.New).Buffer, Editable: false, HunkActions: false, Wrap: true, Theme: codeTheme()},
+		Diff: &editor.DiffState{Old: newCode(file.Path, file.Old).Buffer, New: newCode(file.Path, file.New).Buffer, Editable: false, HunkActions: false, Indicators: editor.DiffClassic, Wrap: true, Theme: codeTheme()},
 	}
 	for i, h := range d.Diff.Hunks() {
 		if match.Line-1 < h.OldEnd || match.Line-1 <= h.OldStart {

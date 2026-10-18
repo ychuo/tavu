@@ -28,48 +28,51 @@ var icons = func() map[string]*ui.SVG {
 }()
 
 var (
-	chrome     = ui.Hex("#242624")
-	panel      = ui.Hex("#1c1f1d")
-	activeFill = ui.Hex("#2c3e30")
-	line       = ui.Hex("#363c37")
-	accent     = ui.Hex("#8ee5a1")
+	chrome          = ui.Hex("#0d0f0e")
+	panel           = ui.Hex("#191c1a")
+	activeFill      = ui.Hex("#2b4435")
+	terminalTabFill = ui.Hex("#2b3b49")
+	line            = ui.Hex("#333c36")
+	accent          = ui.Hex("#91c5a0")
 )
 
-// Forest Dark values follow Mayoi's Qoder palette. The brighter accent marks
-// focus and selection; the deeper green fills primary actions.
+// The shell recedes behind three matching work surfaces. Green identifies file
+// selection and primary actions; terminal tabs have their own quiet blue fill.
 func appTheme() *ui.Theme {
 	t := ui.DarkTheme()
-	t.Background, t.Surface = ui.Hex("#191b1a"), ui.Hex("#222523")
-	t.SurfaceHover, t.SurfacePressed = ui.Hex("#2d332e"), ui.Hex("#363d37")
-	t.Border, t.Text, t.TextMuted = line, ui.Hex("#d9dcd9"), ui.Hex("#949d96")
-	t.Accent, t.AccentHover, t.AccentPressed = ui.Hex("#4d9c61"), ui.Hex("#62ad78"), ui.Hex("#428955")
-	t.AccentText = ui.Hex("#080807")
-	t.Success, t.Warning, t.Danger = ui.Hex("#73cd94"), ui.Hex("#faad14"), ui.Hex("#ff6b70")
-	t.Selection, t.Focus = ui.RGBA(77, 156, 97, .32), accent.Alpha(.5)
-	t.Scrollbar, t.ScrollbarWidth = ui.RGBA(220, 240, 225, .16), 6
-	t.Inverse, t.InverseText = ui.Hex("#303632"), ui.Hex("#eeeeeb")
+	t.Background, t.Surface = chrome, ui.Hex("#222724")
+	t.SurfaceHover, t.SurfacePressed = ui.Hex("#2a302c"), ui.Hex("#303933")
+	t.Border, t.Text, t.TextMuted = line, ui.Hex("#e8ede9"), ui.Hex("#9ba79f")
+	t.Accent, t.AccentHover, t.AccentPressed = ui.Hex("#365b44"), ui.Hex("#426a50"), ui.Hex("#2b4936")
+	t.AccentText = t.Text
+	t.Success, t.Warning, t.Danger = ui.Hex("#86bd99"), ui.Hex("#d4b777"), ui.Hex("#d38b8a")
+	t.Selection, t.Focus = ui.RGBA(105, 157, 122, .30), accent.Alpha(.85)
+	t.Scrollbar, t.ScrollbarWidth = ui.RGBA(202, 219, 207, .18), 6
+	t.Inverse, t.InverseText = ui.Hex("#303933"), t.Text
 	t.Spacing, t.Radius, t.FontSize = 3.5, 6, 13
 	return t
 }
 
 var forestCodeTheme = func() *editor.Theme {
 	t := editor.DefaultTheme(appTheme())
-	t.LineNumber, t.ActiveLineNumber = ui.Hex("#646d66"), ui.Hex("#b3bab4")
-	t.ActiveLine = ui.RGBA(220, 240, 225, .035)
-	t.Cursor, t.MatchingBracket = accent, ui.RGBA(220, 240, 225, .30)
-	t.Match, t.CurrentMatch = ui.RGBA(250, 173, 20, .20), ui.RGBA(250, 173, 20, .38)
-	t.Occurrence = ui.RGBA(220, 240, 225, .075)
-	t.IndentGuide, t.ActiveIndentGuide = ui.RGBA(220, 240, 225, .065), ui.RGBA(220, 240, 225, .22)
-	t.Added, t.Deleted, t.Modified = ui.Hex("#73cd94"), ui.Hex("#e86a70"), ui.Hex("#5a9fe0")
-	t.Error, t.Warning, t.Info, t.Hint = ui.Hex("#ff6b70"), ui.Hex("#faad14"), ui.Hex("#75beff"), ui.Hex("#949d96")
+	// Editors share the enclosing work surface, never the darker window shell.
+	t.Background = panel
+	t.LineNumber, t.ActiveLineNumber = ui.Hex("#7a877e"), ui.Hex("#bcc6bf")
+	t.ActiveLine = ui.RGBA(202, 219, 207, .035)
+	t.Cursor, t.MatchingBracket = accent, ui.RGBA(202, 219, 207, .30)
+	t.Match, t.CurrentMatch = ui.RGBA(212, 183, 119, .20), ui.RGBA(212, 183, 119, .38)
+	t.Occurrence = ui.RGBA(202, 219, 207, .075)
+	t.IndentGuide, t.ActiveIndentGuide = ui.RGBA(202, 219, 207, .065), ui.RGBA(202, 219, 207, .22)
+	t.Added, t.Deleted, t.Modified = ui.Hex("#7bb18e"), ui.Hex("#bf7778"), ui.Hex("#82a7c4")
+	t.Error, t.Warning, t.Info, t.Hint = ui.Hex("#d38b8a"), ui.Hex("#d4b777"), ui.Hex("#8bb5d2"), ui.Hex("#9ba79f")
 	colors := map[editor.TokenKind]string{
-		editor.TokenKeyword: "#73cd94", editor.TokenType: "#82d2ce", editor.TokenFunction: "#87c3ff",
-		editor.TokenString: "#d8c07a", editor.TokenNumber: "#efb080", editor.TokenComment: "#758077",
-		editor.TokenOperator: "#a3aba5", editor.TokenPunctuation: "#8a948c", editor.TokenConstant: "#efb080",
-		editor.TokenMeta: "#aaa0fa", editor.TokenTag: "#e394dc", editor.TokenAttribute: "#aaa0fa",
-		editor.TokenVariable: "#e4e7e4", editor.TokenProperty: "#e4e7e4", editor.TokenHeading: "#8ee5a1",
-		editor.TokenEscape: "#82d2ce", editor.TokenRegexp: "#d8c07a", editor.TokenLink: "#87c3ff",
-		editor.TokenCode: "#d8c07a", editor.TokenDeleted: "#ff6b70", editor.TokenInserted: "#73cd94", editor.TokenInvalid: "#ff6b70",
+		editor.TokenKeyword: "#87c7c0", editor.TokenType: "#8bb5d2", editor.TokenFunction: "#d6bd82",
+		editor.TokenString: "#ceb681", editor.TokenNumber: "#d2ac8a", editor.TokenComment: "#89988e",
+		editor.TokenOperator: "#bbc4bd", editor.TokenPunctuation: "#a5b0a8", editor.TokenConstant: "#d2ac8a",
+		editor.TokenMeta: "#b4a5ce", editor.TokenTag: "#c39dbc", editor.TokenAttribute: "#b4a5ce",
+		editor.TokenVariable: "#e8ede9", editor.TokenProperty: "#e8ede9", editor.TokenHeading: "#91c5a0",
+		editor.TokenEscape: "#87c7c0", editor.TokenRegexp: "#ceb681", editor.TokenLink: "#8bb5d2",
+		editor.TokenCode: "#ceb681", editor.TokenDeleted: "#d38b8a", editor.TokenInserted: "#86bd99", editor.TokenInvalid: "#d38b8a",
 	}
 	for k, hex := range colors {
 		t.Tokens[k].Color = ui.Hex(hex)
@@ -89,7 +92,9 @@ func glyph(c *ui.Context, name string) ui.Element {
 // permanent button outline. Returned handles are used only in this frame.
 func flatButton(c *ui.Context, label string) ui.Element {
 	b := ui.ButtonBase(c).Label(label).Radius(4).Gap(7).AlignItems(ui.Center).Cursor(ui.CursorPointer)
-	if b.Hovered() {
+	if b.Pressed() {
+		b.Background(c.Theme().SurfacePressed)
+	} else if b.Hovered() {
 		b.Background(c.Theme().SurfaceHover)
 	}
 	return b
@@ -149,18 +154,18 @@ func toolToggle(c *ui.Context, name, label string, selected bool) ui.Element {
 func fileGlyph(c *ui.Context, path string, dir, expanded bool) {
 	name, color := "file", c.Theme().TextMuted
 	if dir {
-		name, color = "folder", accent
+		name, color = "folder", c.Theme().TextMuted
 		if expanded {
 			name = "folder-open"
 		}
 	} else {
 		switch strings.ToLower(filepath.Ext(path)) {
 		case ".go", ".rs", ".c", ".h", ".cpp", ".js", ".ts", ".tsx", ".jsx", ".py", ".sh", ".swift":
-			name, color = "file-code-2", ui.Hex("#00bddd")
+			name, color = "file-code-2", ui.Hex("#79b4c7")
 		case ".json", ".yaml", ".yml", ".toml", ".mod", ".sum":
-			name, color = "file-json", ui.Hex("#c8cc56")
+			name, color = "file-json", ui.Hex("#c4b77a")
 		case ".md", ".txt":
-			name, color = "file-text", ui.Hex("#5a9fe0")
+			name, color = "file-text", ui.Hex("#82abc9")
 		}
 	}
 	glyph(c, name).TextColor(color)

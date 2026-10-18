@@ -2,7 +2,6 @@ package views
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -17,7 +16,7 @@ type replacementUndo struct {
 }
 
 func (a *App) searchActionsDisabled() bool {
-	return a.busy || a.loading || a.searching || a.replacePreparing
+	return a.busy || a.fileBusy || a.loading || a.searching || a.replacePreparing
 }
 
 func (a *App) dismissSearchMatch(match files.Match) {
@@ -117,6 +116,17 @@ func (a *App) replaceSearchFile(path string) {
 }
 
 func (a *App) runScopedReplacement(selection files.ReplaceSelection, anchor *files.Match) {
+	if a.searchActionsDisabled() {
+		return
+	}
+	path := selection.Path
+	if selection.Match != nil {
+		path = selection.Match.Path
+	}
+	if !a.replacementFilesClean([]string{path}) {
+		return
+	}
+	a.statusEpoch++
 	a.cancelReplacePreview()
 	a.cancelDocumentLoad()
 	a.searchNotice, a.replaceFeedback = "", "Replacing…"
@@ -155,12 +165,12 @@ func (a *App) finishScopedReplace(gen, revision uint64, plan *files.ReplacePlan,
 	a.markReplacementWrites(result.Applied)
 	a.refreshSearch(true)
 	if err != nil {
-		a.searchNotice = fmt.Sprintf("%s replaced. %s", fileCountLabel(len(result.Applied)), err.Error())
+		a.searchNotice = a.tr("%s replaced. %s", a.localizedFileCount(len(result.Applied)), err.Error())
 		a.replaceFeedback = "Replacement failed"
 	} else if len(result.Applied) == 0 {
 		a.replaceFeedback = "No changes to apply"
 	} else {
-		a.replaceFeedback = "Replaced in " + fileCountLabel(len(result.Applied))
+		a.replaceFeedback = a.tr("Replaced in %s", a.localizedFileCount(len(result.Applied)))
 	}
 	a.message = a.replaceFeedback
 	a.refresh()
@@ -182,6 +192,10 @@ func (a *App) undoReplacement() {
 		return
 	}
 	undo, fs, gen := a.replaceUndo, a.fs, a.generation
+	if !a.replacementFilesClean(undo.result.Applied) {
+		return
+	}
+	a.statusEpoch++
 	a.replaceUndo = nil // Each backend undo plan permits one attempt.
 	a.cancelReplacePreview()
 	a.cancelDocumentLoad()
@@ -207,10 +221,10 @@ func (a *App) finishUndoReplace(gen uint64, undo *replacementUndo, result files.
 	a.markReplacementWrites(result.Applied)
 	a.refreshSearch(true)
 	if err != nil {
-		a.searchNotice = fmt.Sprintf("%s restored. %s", fileCountLabel(len(result.Applied)), err.Error())
+		a.searchNotice = a.tr("%s restored. %s", a.localizedFileCount(len(result.Applied)), err.Error())
 		a.replaceFeedback = "Undo failed"
 	} else {
-		a.replaceFeedback = "Restored " + fileCountLabel(len(result.Applied))
+		a.replaceFeedback = a.tr("Restored %s", a.localizedFileCount(len(result.Applied)))
 	}
 	a.message = a.replaceFeedback
 	a.refresh()
@@ -221,9 +235,27 @@ func (a *App) replacementFeedback(c *ui.Context) {
 		return
 	}
 	ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, a.replaceFeedback).FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(a.replaceFeedback)
+		ui.Text(c, tr(c, a.replaceFeedback)).FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(tr(c, a.replaceFeedback))
 		if a.replaceUndo != nil {
 			toolButton(c, "undo-2", "Undo Replacement").Size(24, 24).Disabled(a.searchActionsDisabled()).OnClick(a.undoReplacement)
 		}
 	})
+}
+
+// Search operates on disk. Keep unsaved editor buffers intact and require the
+// user to settle their contents before applying a disk-based preview.
+func (a *App) replacementFilesClean(paths []string) bool {
+	for _, d := range a.documents {
+		if !d.fileDirty() {
+			continue
+		}
+		for _, path := range paths {
+			if path == d.Path {
+				a.replaceFeedback = a.tr("Save or reload %s before replacing", d.Path)
+				a.message = a.replaceFeedback
+				return false
+			}
+		}
+	}
+	return true
 }

@@ -72,7 +72,7 @@ func (a *App) cancelReplacePreview() {
 // Build a complete, immutable plan before enabling the inline write action.
 // The snippets and confirmation then refer to the same source bytes.
 func (a *App) prepareReplace() {
-	if a.fs == nil || a.textQuery == "" || !a.replaceExpanded || !a.searchCompleted || a.searchTruncated || a.searching || a.busy || a.loading {
+	if a.fs == nil || a.textQuery == "" || !a.replaceExpanded || !a.searchCompleted || a.searchTruncated || a.searching || a.busy || a.fileBusy || a.loading {
 		return
 	}
 	a.cancelReplacePreview()
@@ -131,10 +131,10 @@ func (a *App) replacementConfirmation(c *ui.Context) {
 		return
 	}
 	ui.Column(c).FillWidth().Gap(4).Children(func() {
-		ui.Text(c, searchCountLabel(a.replacePlan.Count(), len(a.replaceFiles), "replacement")).FontSize(12).FillWidth()
+		ui.Text(c, a.localizedSearchCount(a.replacePlan.Count(), len(a.replaceFiles), "replacement")).FontSize(12).FillWidth()
 		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Button(c, "Replace All").Label("Confirm Replace All").Description("Save the previewed replacements to disk").Height(26).Padding(0, 8).FontSize(13).Disabled(a.busy || a.loading).OnClick(a.applyReplace)
-			ui.Text(c, "Save to disk").FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine()
+			ui.Button(c, tr(c, "Replace All")).Label(tr(c, "Confirm Replace All")).Description(tr(c, "Save the previewed replacements to disk")).Height(26).Padding(0, 8).FontSize(13).Disabled(a.busy || a.fileBusy || a.loading).OnClick(a.applyReplace)
+			ui.Text(c, tr(c, "Save to disk")).FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinWidth(0).SingleLine()
 			toolButton(c, "x", "Cancel Replace").Size(24, 24).OnClick(a.cancelReplacePreview)
 		})
 	})
@@ -209,7 +209,7 @@ func (a *App) finishReplacementFile(id, gen, revision uint64, file files.Replace
 
 func (a *App) showReplacementFile(file files.ReplaceFile, match files.Match, reveal bool) {
 	id := "replace:" + file.Path
-	d := &document{ID: id, Path: file.Path, Label: filepath.Base(file.Path) + " · Replace", Notice: "Replacement preview · Not saved", DiskHash: file.Hash, Preview: true, Replacement: true, ReplaceMatch: match, ReplaceRevision: a.searchID,
+	d := &document{ID: id, Path: file.Path, Label: filepath.Base(file.Path) + " · " + a.tr("Replace"), Notice: "Replacement preview · Not saved", DiskHash: file.Hash, Preview: true, Replacement: true, ReplaceMatch: match, ReplaceRevision: a.searchID,
 		Diff: &editor.DiffState{Old: newCode(file.Path, file.Old).Buffer, New: newCode(file.Path, file.New).Buffer, Editable: false, HunkActions: false, Indicators: editor.DiffClassic, Wrap: true, Theme: codeTheme()},
 	}
 	for i, h := range d.Diff.Hunks() {
@@ -258,10 +258,18 @@ func (a *App) refreshCurrentReplacement() {
 }
 
 func (a *App) applyReplace() {
-	if a.fs == nil || a.replacePlan == nil || !a.replaceConfirm || !a.replaceExpanded || a.busy || a.loading {
+	if a.fs == nil || a.replacePlan == nil || !a.replaceConfirm || !a.replaceExpanded || a.busy || a.fileBusy || a.loading {
 		return
 	}
 	plan, fs, gen, revision := a.replacePlan, a.fs, a.generation, a.searchID
+	var paths []string
+	for _, f := range plan.Files() {
+		paths = append(paths, f.Path)
+	}
+	if !a.replacementFilesClean(paths) {
+		return
+	}
+	a.statusEpoch++
 	base := a.projectCtx
 	if base == nil {
 		base = context.Background()

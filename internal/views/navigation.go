@@ -14,19 +14,21 @@ import (
 
 func (a *App) Menu() *mygo.Menu {
 	item := func(label, shortcut string, action func()) *mygo.MenuItem {
-		return &mygo.MenuItem{Label: label, Accelerator: shortcut, Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+		return &mygo.MenuItem{Label: a.tr(label), Accelerator: shortcut, Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
 			a.update(func() { a.runWorkspaceAction(action) })
 		}}
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
-		{Label: "File", Submenu: []*mygo.MenuItem{
+		{Label: a.tr("File"), Submenu: []*mygo.MenuItem{
 			item("Open Folder…", "CmdOrCtrl+O", a.chooseProject),
 			item("Quick Open…", "CmdOrCtrl+P", a.openQuickOpen),
+			item("Save", "CmdOrCtrl+S", a.saveCurrentFile),
+			item("Save All", "CmdOrCtrl+Shift+S", a.saveAllFiles),
 			item("Close Tab", "CmdOrCtrl+W", a.closeActiveTab),
 		}},
 		{Role: mygo.RoleEditMenu},
-		{Label: "View", Submenu: []*mygo.MenuItem{
+		{Label: a.tr("View"), Submenu: []*mygo.MenuItem{
 			item("Search in Files", "CmdOrCtrl+Shift+F", a.openSearch),
 			item("Toggle Sidebar", "CmdOrCtrl+B", func() { a.sidebar = !a.sidebar; a.saveSettings() }),
 			item("Focus Terminal", "CmdOrCtrl+Shift+J", a.focusTerminal),
@@ -95,7 +97,7 @@ func (a *App) findQuickFiles() {
 			}
 			a.quickSearching = false
 			if err != nil {
-				a.quickNotice = "File search failed: " + err.Error()
+				a.quickNotice = a.tr("File search failed: %s", err.Error())
 				return
 			}
 			a.quickResults = results
@@ -118,58 +120,66 @@ func (a *App) chooseQuickFile(i int) {
 
 func (a *App) quickOpenDialog(c *ui.Context) {
 	wasOpen := a.quickOpen
-	w, h := c.Size()
-	ui.DialogBase(c.Key("quick-open"), &a.quickOpen, func(backdrop, frame ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, .4))
-		frame.Label("Quick Open").Width(min(600, w-32)).Padding(0).Gap(0).Radius(6).Background(panel).Border(1, line)
-		ui.Row(c).FillWidth().Padding(12).Gap(8).AlignItems(ui.Center).Children(func() {
-			glyph(c, "search").TextColor(c.Theme().TextMuted)
-			input := ui.TextInput(c, &a.quickQuery).Label("Find File").Placeholder("Name or path…").Grow(1).MinWidth(0).Height(30).AutoFocus()
-			if input.Changed() {
-				a.findQuickFiles()
+	w, _ := c.Size()
+	rowCount := len(a.quickResults)
+	if a.quickSearching || rowCount == 0 {
+		rowCount = 1
+	}
+	tavuQuickPicker(c.Key("quick-open"), &a.quickOpen, "Quick Open", 32, rowCount, func() {
+		input := tavuQuickPickerField(c, ui.TextInputBase(c, &a.quickQuery)).Label(tr(c, "Find File")).Placeholder(tr(c, "Find file by name or path…")).FillWidth().AutoFocus()
+		if input.Changed() {
+			a.findQuickFiles()
+		}
+		if input.Shortcut(0, ui.KeyDown) && len(a.quickResults) > 0 {
+			a.quickSelected = min(a.quickSelected+1, len(a.quickResults)-1)
+			a.quickMoved = true
+		}
+		if input.Shortcut(0, ui.KeyUp) && len(a.quickResults) > 0 {
+			a.quickSelected = max(0, a.quickSelected-1)
+			a.quickMoved = true
+		}
+		if input.Submitted() {
+			a.chooseQuickFile(a.quickSelected)
+		}
+	}, func() {
+		if a.quickSearching {
+			ui.Text(c, tr(c, "Searching…")).Padding(8).FontSize(12).TextColor(c.Theme().TextMuted)
+		}
+		if !a.quickSearching && len(a.quickResults) == 0 {
+			message := "No matching files"
+			if a.quickNotice != "" {
+				message = a.quickNotice
 			}
-			if input.Shortcut(0, ui.KeyDown) {
-				a.quickSelected = min(a.quickSelected+1, len(a.quickResults)-1)
-				a.quickMoved = true
-			}
-			if input.Shortcut(0, ui.KeyUp) {
-				a.quickSelected = max(0, a.quickSelected-1)
-				a.quickMoved = true
-			}
-			if input.Submitted() {
-				a.chooseQuickFile(a.quickSelected)
-			}
-			toolButton(c, "x", "Close Quick Open").OnClick(a.closeQuickOpen)
-		})
-		ui.Scroll(c).Height(min(320, h-190)).FillWidth().Padding(6).Children(func() {
-			if a.quickSearching {
-				ui.Text(c, "Searching…").Padding(10).TextColor(c.Theme().TextMuted)
-			}
-			if !a.quickSearching && len(a.quickResults) == 0 {
-				message := "No matching files"
-				if a.quickNotice != "" {
-					message = a.quickNotice
+			ui.Text(c, tr(c, message)).Padding(8).FontSize(12).SingleLine().Tooltip(tr(c, message)).TextColor(c.Theme().TextMuted)
+		}
+		for i, file := range a.quickResults {
+			row := flatButton(c.Key(file.Path), file.Path).Label(file.Path).FillWidth().Height(32).Padding(0, 8).Gap(8).Selected(i == a.quickSelected).Tooltip(file.Path)
+			if i == a.quickSelected {
+				row.Background(palette(c).activeFill).TextColor(c.Theme().Text)
+				if a.quickMoved {
+					row.ScrollIntoView()
 				}
-				ui.Text(c, message).Padding(10).TextColor(c.Theme().TextMuted)
 			}
-			for i, file := range a.quickResults {
-				row := flatButton(c.Key(file.Path), file.Path).FillWidth().Height(32).Padding(0, 8).Selected(i == a.quickSelected)
-				if i == a.quickSelected {
-					row.Background(activeFill).TextColor(c.Theme().Text)
-					if a.quickMoved {
-						row.ScrollIntoView()
-					}
+			row.Children(func() {
+				fileGlyph(c, file.Path, false, false)
+				parent := filepath.ToSlash(filepath.Dir(file.Path))
+				name := ui.Text(c, filepath.Base(file.Path)).FontSize(13).SingleLine().MinWidth(0)
+				if parent == "." {
+					name.Grow(1)
+				} else {
+					name.MaxWidth(max(80, (min(640, w-32)-64)*.65)).Shrink(0)
+					ui.Text(c, parent).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine().MinWidth(0).Grow(1)
 				}
-				row.Children(func() {
-					fileGlyph(c, file.Path, false, false)
-					ui.Text(c, filepath.Base(file.Path)).FontSize(12).SingleLine()
-					ui.Text(c, filepath.Dir(file.Path)).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine().MinWidth(0).Grow(1)
-				}).OnClick(func() { a.chooseQuickFile(i) })
-			}
-		})
-		a.quickMoved = false
-		ui.Text(c, "↑↓ Select · Enter Open · Esc Close · Max 100 files").FontSize(11).TextColor(c.Theme().TextMuted).Padding(10, 12)
+			}).OnClick(func() { a.chooseQuickFile(i) })
+		}
+	}, func() {
+		ui.Text(c, tr(c, "↑↓ Select   ↵ Open")).FontSize(11).TextColor(c.Theme().TextMuted).Grow(1)
+		if len(a.quickResults) >= 100 {
+			ui.Text(c, tr(c, "First 100 files")).FontSize(11).TextColor(c.Theme().TextMuted)
+		}
+		ui.Text(c, tr(c, "Esc Close")).FontSize(11).TextColor(c.Theme().TextMuted)
 	})
+	a.quickMoved = false
 	if wasOpen && !a.quickOpen {
 		a.closeQuickOpen()
 	}
@@ -191,12 +201,39 @@ func (a *App) revealActiveFile() {
 }
 
 func (a *App) documentTabLabel(d *document) string {
+	label := d.Label
+	// Rebuild only application-owned labels from stable document metadata.
+	// User filenames are never fed through a translation lookup, and existing
+	// open tabs change language without recreating their editor buffers.
+	switch {
+	case d.Continuous != nil:
+		label = a.tr(continuousGroupLabel(d.Continuous.Group))
+	case d.Replacement:
+		label = filepath.Base(d.Path) + " · " + a.tr("Replace")
+	case strings.HasPrefix(d.ID, "conflict-preview:"):
+		label = a.tr("%s · Save Conflict", filepath.Base(d.Path))
+	case strings.HasPrefix(d.ID, "comment:"):
+		label = a.tr("Comment · %s", filepath.Base(d.Path))
+	case d.Comparison != nil && strings.HasPrefix(d.ID, "diff:"):
+		if d.Comparison.Kind == "conflict" {
+			label = a.tr("%s · Conflict", d.Path)
+		} else {
+			label = filepath.Base(d.Path) + " · " + a.tr(kindLabel(d.Comparison.Kind))
+		}
+	case strings.HasPrefix(d.ID, "diff:") && strings.HasSuffix(d.ID, ":old"):
+		label = filepath.Base(d.Path) + " · " + a.tr("old")
+	case strings.HasPrefix(d.ID, "diff:") && strings.HasSuffix(d.ID, ":new"):
+		label = filepath.Base(d.Path) + " · " + a.tr("new")
+	}
+	if d.fileDirty() {
+		label += " •"
+	}
 	for _, other := range a.documents {
 		if other.Path != d.Path && filepath.Base(other.Path) == filepath.Base(d.Path) {
-			return d.Label + " · " + filepath.ToSlash(filepath.Dir(d.Path))
+			return label + " · " + filepath.ToSlash(filepath.Dir(d.Path))
 		}
 	}
-	return d.Label
+	return label
 }
 
 func terminalTabLabel(index int, session sessions.Session, root string) string {

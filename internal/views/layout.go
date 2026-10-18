@@ -102,7 +102,7 @@ func (a *App) readerHeight(c *ui.Context) float32 {
 func surfaceSplit(c *ui.Context, vertical bool, size *float32, first, second func()) ui.Element {
 	base := c.Theme()
 	quiet := *base
-	quiet.Border = chrome
+	quiet.Border = palette(c).chrome
 	c.SetTheme(&quiet)
 	wrap := func(before bool, child func()) func() {
 		return func() {
@@ -157,7 +157,7 @@ func (a *App) setArrangement(value string) {
 func (a *App) arrangementMenu(m *ui.Menu) {
 	for _, item := range []struct{ value, label string }{{"auto", "Automatic Layout"}, {"horizontal", "Side by Side"}, {"vertical", "Stacked"}} {
 		selected := a.arrangement == item.value || (a.arrangement == "" && item.value == "auto")
-		if m.Item(item.label).Checked(selected).Chosen() {
+		if m.Item(a.tr(item.label)).Checked(selected).Chosen() {
 			a.setArrangement(item.value)
 		}
 	}

@@ -19,7 +19,7 @@ import (
 )
 
 func (a *App) openProject(path string) {
-	if a.busy || a.loading {
+	if a.busy || a.fileBusy || a.loading {
 		return
 	}
 	a.saveReview()
@@ -61,6 +61,7 @@ func (a *App) openProject(path string) {
 			a.update(func() {
 				if gen == a.generation {
 					a.loading = false
+					a.resumeContinuousReviewLoads()
 					a.watch(ctx, gen, a.root, a.status.GitDir, a.status.CommonDir)
 					a.fail(err)
 				}
@@ -81,6 +82,7 @@ func (a *App) openProject(path string) {
 					return
 				}
 				a.loading = false
+				a.resumeContinuousReviewLoads()
 				a.watch(ctx, gen, a.root, a.status.GitDir, a.status.CommonDir)
 				a.fail(err)
 			})
@@ -128,6 +130,9 @@ func (a *App) openProject(path string) {
 				a.repo = nil
 			}
 			a.status = status
+			a.resetGitWorkspace()
+			a.fileWorkspaceState = fileWorkspaceState{}
+			a.resetReviewWorkspace()
 			a.latest = map[string]string{}
 			a.state = pd
 			a.snapshot = snap
@@ -135,6 +140,9 @@ func (a *App) openProject(path string) {
 			a.reviewTab = 0
 			a.changed = false
 			a.snapshotCheckNotice = ""
+			for _, d := range a.documents {
+				d.cancelContinuousReview()
+			}
 			a.documents = nil
 			a.selectedDoc = ""
 			a.hasRange = false
@@ -155,13 +163,13 @@ func (a *App) openProject(path string) {
 			a.settings.LastProject = a.root
 			a.settings.RecentProjects = append([]string{a.root}, a.settings.RecentProjects...)
 			a.saveSettings()
-			a.message = "Folder opened"
+			a.message = a.tr("Folder opened")
 			if gitErr != nil {
-				a.message = "Folder opened. Git unavailable: " + gitErr.Error()
+				a.message = a.tr("Folder opened. Git unavailable: %s", gitErr.Error())
 			}
 			a.fail(e)
 			a.fail(loadErr)
-			a.terms = sessions.NewManager(sessions.Config{Dir: a.root, Shell: a.settings.Shell, FontSize: a.settings.FontSize, FontFamily: a.settings.FontFamily, Dispatch: a.update, OnChange: func() {}, OnError: a.fail, OnLink: func(t sessions.LinkTarget) {
+			a.terms = sessions.NewManager(sessions.Config{Theme: a.settings.Theme, Dir: a.root, Shell: a.settings.Shell, FontSize: a.settings.FontSize, FontFamily: a.settings.FontFamily, Dispatch: a.update, OnChange: func() {}, OnError: a.fail, OnLink: func(t sessions.LinkTarget) {
 				p, e := filepath.Rel(a.root, t.Path)
 				if e != nil {
 					a.fail(e)
@@ -172,6 +180,7 @@ func (a *App) openProject(path string) {
 			a.activeTerm = ""
 			a.secondTerm = ""
 			a.newTerminal(false)
+			a.refreshGitWorkspace()
 			a.watch(ctx, gen, a.root, status.GitDir, status.CommonDir)
 			a.refresh()
 		})
@@ -201,7 +210,7 @@ func (a *App) watch(ctx context.Context, gen uint64, paths ...string) {
 			if err != nil {
 				a.update(func() {
 					if gen == a.generation {
-						a.message = "File watching unavailable. Refresh manually: " + err.Error()
+						a.message = a.tr("File watching unavailable. Refresh manually: %s", err.Error())
 					}
 				})
 				return
@@ -225,7 +234,7 @@ func (a *App) refresh() {
 	if a.fs == nil || a.projectCtx == nil || a.quitting || a.loading {
 		return
 	}
-	if a.busy {
+	if a.busy || a.fileBusy {
 		a.refreshAgain = true
 		return
 	}
@@ -269,6 +278,7 @@ func (a *App) refresh() {
 				a.status = s
 				a.latest = latest
 				a.updateVersionState(s, latest, observeErr, disk)
+				a.refreshGitWorkspace()
 			} else {
 				a.updateVersionState(a.status, nil, err, disk)
 				a.changed = false // Cached Git status cannot establish a current difference.
@@ -344,8 +354,8 @@ func (a *App) updateVersionState(status gitrepo.Status, latest map[string]string
 			a.snapshotCheckNotice = "Review version check unavailable"
 		}
 	}
-	for _, d := range a.documents {
-		if d.SnapshotID != "" {
+	for _, d := range a.versionDocuments() {
+		if d.SnapshotID != "" || d.Historical {
 			continue
 		}
 		if d.Replacement && d.ReplaceRevision != a.searchID {
@@ -545,7 +555,11 @@ func modeType(mode string) string {
 	return "file"
 }
 func (a *App) openChange(change gitrepo.Change) {
-	a.openChangeReplacing(change, "")
+	if change.Kind == gitrepo.Conflict {
+		a.openGitConflict(change)
+		return
+	}
+	a.openContinuousChange(change)
 }
 
 func (a *App) openChangeReplacing(change gitrepo.Change, replaceID string) {
@@ -584,16 +598,17 @@ func (a *App) showComparison(c review.Comparison, snapshotID string) {
 func (a *App) showComparisonReplacing(c review.Comparison, snapshotID, replaceID string) {
 	c = c.Clone()
 	fp := c.Fingerprint()
-	d := &document{ID: "diff:" + snapshotID + ":" + fp, Path: c.Path, Label: filepath.Base(c.Path) + " · " + kindLabel(c.Kind), Comparison: &c, SnapshotID: snapshotID, Notice: kindLabel(c.Kind) + " · Loaded comparison"}
+	d := &document{ID: "diff:" + snapshotID + ":" + fp, Path: c.Path, Label: filepath.Base(c.Path) + " · " + kindLabel(c.Kind), Comparison: &c, SnapshotID: snapshotID}
+	parts := []documentNoticeMessage{noticeMessage(kindLabel(c.Kind)), noticeMessage("Loaded comparison")}
 	if snapshotID != "" {
-		d.Notice = kindLabel(c.Kind) + " · Saved Review " + short(snapshotID)
+		parts[1] = noticeMessage("Saved Review %s", short(snapshotID))
 		d.Label += " · Saved Review"
 	}
 	oldErr, newErr := files.ValidateText(c.Old), files.ValidateText(c.New)
 	if oldErr != nil || newErr != nil {
-		d.Notice += " · Binary or non-UTF-8; no text preview"
+		parts = append(parts, noticeMessage("Binary or non-UTF-8; no text preview"))
 	} else if c.OldType == "gitlink" || c.NewType == "gitlink" {
-		d.Notice += " · Submodule review unavailable"
+		parts = append(parts, noticeMessage("Submodule review unavailable"))
 	} else {
 		d.Diff = &editor.DiffState{Old: newCode(c.Path, c.Old).Buffer, New: newCode(c.Path, c.New).Buffer, Editable: false, HunkActions: false, LineSelection: true, Indicators: editor.DiffClassic, Wrap: true, Theme: codeTheme()}
 		d.Diff.OnLineSelection = func(r editor.DiffLineRange) { a.selectedRange = r; a.hasRange = true }
@@ -607,6 +622,7 @@ func (a *App) showComparisonReplacing(c review.Comparison, snapshotID, replaceID
 			d.Diff.SetSelectedLines(r, true)
 		}
 	}
+	d.setNotice(parts...)
 	if replaceID != "" {
 		a.replaceDocument(replaceID, d)
 	} else {
@@ -618,16 +634,26 @@ func (a *App) showComparisonReplacing(c review.Comparison, snapshotID, replaceID
 
 func (a *App) canRefreshCurrentDocument() bool {
 	d := a.current()
-	return d != nil && !d.Replacement && d.SnapshotID == "" && (d.DiskHash != "" || d.Comparison != nil)
+	return d != nil && !d.Replacement && !d.Historical && d.SnapshotID == "" && (d.DiskHash != "" || d.Comparison != nil || d.Continuous != nil)
 }
 
 func (a *App) refreshCurrentDocument() {
-	if !a.canRefreshCurrentDocument() || a.loading || a.busy {
+	if !a.canRefreshCurrentDocument() || a.loading || a.busy || a.fileBusy {
 		return
 	}
 	d := a.current()
+	if d.Continuous != nil {
+		a.reloadContinuousEntry(d, d.Continuous.entry(d.Continuous.Active))
+		return
+	}
 	if d.DiskHash != "" {
+		if a.guardFileTransition("Reload file", []string{d.ID}, a.refreshCurrentDocument) {
+			return
+		}
 		a.openFileReplacing(d.Path, 1, d.ID)
+		return
+	}
+	if a.guardReviewTransition("Reload review", []string{d.ID}, a.refreshCurrentDocument) {
 		return
 	}
 	for _, change := range a.status.Changes {
@@ -636,7 +662,7 @@ func (a *App) refreshCurrentDocument() {
 			return
 		}
 	}
-	a.message = "Change removed. Loaded version and comments kept."
+	a.message = a.tr("Change removed. Loaded version and comments kept.")
 }
 func (a *App) fullVersion(old bool) {
 	d := a.current()
@@ -649,7 +675,9 @@ func (a *App) fullVersion(old bool) {
 		raw = d.Comparison.Old
 		side = "old"
 	}
-	a.addDocument(&document{ID: d.ID + ":" + side, Path: d.Path, Label: filepath.Base(d.Path) + " · " + side, SnapshotID: d.SnapshotID, Notice: d.Notice + " · Full " + side + " version", Code: newCode(d.Path, raw)})
+	full := &document{ID: d.ID + ":" + side, Path: d.Path, Label: filepath.Base(d.Path) + " · " + side, SnapshotID: d.SnapshotID, Code: newCode(d.Path, raw)}
+	full.setNotice(append(d.noticeMessages(), noticeMessage("Full %s version", noticeWord(side)))...)
+	a.addDocument(full)
 }
 func (a *App) externalOpen() {
 	d := a.current()
@@ -667,7 +695,7 @@ func (a *App) externalOpen() {
 }
 
 func (a *App) startReview() {
-	if a.repo == nil || a.busy || a.loading {
+	if a.repo == nil || a.busy || a.fileBusy || a.loading {
 		return
 	}
 	a.busy = true
@@ -699,7 +727,7 @@ func (a *App) applySavedReview(snap review.Snapshot) {
 	a.state.SnapshotID = snap.ID
 	a.reviewing = true
 	a.saveReview()
-	a.message = "Review version saved"
+	a.message = a.tr("Review version saved")
 	a.refresh()
 }
 
@@ -746,7 +774,7 @@ func (a *App) addComment() {
 			a.selectedRange, a.hasRange = d.Diff.SelectedLines()
 		}
 		if !a.hasRange {
-			a.message = "Select lines to comment."
+			a.message = a.tr("Select lines to comment.")
 			return
 		}
 		side := review.NewSide
@@ -760,9 +788,10 @@ func (a *App) addComment() {
 		return
 	}
 	a.commentDraft = ""
+	a.saveReviewDraft(a.current())
 	a.saveReview()
 	a.decorate(d)
-	a.message = "Comment saved"
+	a.message = a.tr("Comment saved")
 }
 
 func (a *App) decorate(d *document) {
@@ -786,7 +815,7 @@ func (a *App) decorate(d *document) {
 				if cm.Resolved {
 					label = "Resolved"
 				}
-				ui.Text(c, label+" · "+cm.Body).FontSize(12).TextColor(c.Theme().TextMuted)
+				ui.Text(c, tr(c, label)+" · "+cm.Body).FontSize(12).TextColor(c.Theme().TextMuted)
 				break
 			}
 		}
@@ -803,7 +832,7 @@ func (a *App) prepareExport() {
 	a.previewOpen = len(comments) > 0
 }
 func (a *App) writeGit(stage bool, path string) {
-	if a.repo == nil || a.busy || a.loading {
+	if a.repo == nil || a.busy || a.fileBusy || a.loading {
 		return
 	}
 	a.busy = true
@@ -828,7 +857,7 @@ func (a *App) writeGit(stage bool, path string) {
 				return
 			}
 			a.status = s
-			a.message = "Git updated. Seen status unchanged."
+			a.message = a.tr("Git updated. Seen status unchanged.")
 			a.refresh()
 		})
 	}()
@@ -871,7 +900,7 @@ func (a *App) clearHistory() {
 				a.snapshotCheckNotice = ""
 				a.state.SnapshotID = ""
 				a.reviewTab = 0
-				a.message = "Saved reviews cleared. Comments kept."
+				a.message = a.tr("Saved reviews cleared. Comments kept.")
 				a.saveReview()
 			}
 		})
@@ -883,6 +912,9 @@ func (a *App) observeKeys() []string {
 	seen := map[string]bool{}
 	var keys []string
 	add := func(kind, path string) {
+		if kind != "staged" && kind != "unstaged" && kind != "untracked" && kind != "conflict" {
+			return // Historical commits never follow working-tree status.
+		}
 		k := workspace.Key(kind, path)
 		if !seen[k] {
 			seen[k] = true
@@ -894,8 +926,8 @@ func (a *App) observeKeys() []string {
 			add(cm.Kind, cm.Path)
 		}
 	}
-	for _, d := range a.documents {
-		if d.Comparison != nil {
+	for _, d := range a.versionDocuments() {
+		if d.Comparison != nil && !d.Historical {
 			add(d.Comparison.Kind, d.Path)
 		}
 	}
@@ -907,11 +939,12 @@ func (a *App) observeKeys() []string {
 	return keys
 }
 func (a *App) reloadTree() {
-	if a.fs == nil || a.loading || a.treeRefreshing {
+	if a.fs == nil || a.loading || a.busy || a.fileBusy || a.treeRefreshing {
 		return
 	}
 	a.treeRefreshing = true
 	fs, ctx, gen := a.fs, a.projectCtx, a.generation
+	epoch := a.statusEpoch
 	dirs := []string{"."}
 	for p := range a.trees {
 		if p != "." && a.expanded[p] {
@@ -931,6 +964,10 @@ func (a *App) reloadTree() {
 				return
 			}
 			a.treeRefreshing = false
+			if epoch != a.statusEpoch {
+				a.reloadTree()
+				return
+			}
 			for p, entries := range trees {
 				a.trees[p] = entries
 			}

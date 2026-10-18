@@ -15,7 +15,7 @@ import (
 
 func main() {
 	mygo.App.SetName("Tavu")
-	mygo.App.SetLanguages("en")
+	mygo.App.SetLanguages("en", "zh-Hans", "zh-Hant", "ja")
 	if len(os.Args) > 1 && os.Args[1] == "--diagnostics" {
 		diagnostics()
 		return
@@ -24,14 +24,13 @@ func main() {
 		return
 	}
 	mygo.App.WhenReady(func() {
-		mygo.App.SetLocale("en")
-		mygo.Theme.SetSource(mygo.ThemeDark)
 		data, err := mygo.App.Path(mygo.PathUserData)
 		if err != nil {
 			log.Print(err)
 		}
 		a := views.New(data)
-		win := mygo.NewWindow(mygo.WindowOptions{Title: "Tavu", Width: 1380, Height: 920, MinWidth: 760, MinHeight: 560, StateKey: "main", BackgroundColor: "#0d0f0e", TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 15}, TitleBarHeight: 44, Content: ui.View(a.View)})
+		a.ConfigureUI()
+		win := mygo.NewWindow(mygo.WindowOptions{Title: "Tavu", Width: 1380, Height: 920, MinWidth: 760, MinHeight: 560, StateKey: "main", BackgroundColor: a.WindowBackground(), TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 15}, TitleBarHeight: 44, Content: ui.View(a.View)})
 		a.Attach(win)
 		mygo.App.OnSecondInstance(func(_ []string, _ string) { win.Show(); win.Focus() })
 		mygo.App.SetMenu(a.Menu())

@@ -133,16 +133,26 @@ func TestClosingFileCommentTabDoesNotRetargetDraft(t *testing.T) {
 	a.showComparison(other, "captured")
 	remaining := a.current()
 	a.showComparison(fileCommentComparison(), "captured")
+	original := a.current()
 	a.beginComment()
 	const draft = "Only the original file needs this redesign."
 	a.commentDraft = draft
-	a.closeDocument(a.current().ID)
-	if a.current() != remaining || a.commentFile || a.commentFocus || a.hasRange {
+	a.requestCloseDocument(original.ID)
+	if !a.reviewGuardOpen || a.current() != original || a.commentDraft != draft || !a.commentFile {
+		t.Fatal("closing a file comment tab did not protect its unsent draft")
+	}
+	a.cancelReviewTransition()
+	if a.reviewGuardOpen || a.current() != original || a.commentDraft != draft || !a.commentFile {
+		t.Fatal("canceling close changed the original comment target or draft")
+	}
+	a.requestCloseDocument(original.ID)
+	a.discardReviewTransition()
+	if a.reviewGuardOpen || a.current() != remaining || a.commentFile || a.commentFocus || a.hasRange || a.commentDraft != "" {
 		t.Fatal("closing a file comment tab carried its composer scope to another file")
 	}
 	a.addComment()
-	if len(a.state.Review.Comments) != 0 || a.commentDraft != draft {
-		t.Fatal("an unanchored draft was saved to the remaining file or discarded")
+	if len(a.state.Review.Comments) != 0 || a.commentDraft != "" {
+		t.Fatal("the discarded draft was saved to the remaining file or restored")
 	}
 }
 

@@ -35,7 +35,7 @@ func TestChangeRowHasBalancedMarginsAndStatusSpacing(t *testing.T) {
 	if math.Abs(float64(center(seen)-center(status)-24)) > 1 || math.Abs(float64(center(status)-center(stage)-24)) > 1 {
 		t.Fatalf("overlay must sit before the persistent status columns: stage=%+v status=%+v seen=%+v", stage, status, seen)
 	}
-	if got := searchControl(t, tt, "Changes · main.go"); got != body || body.W != 248 {
+	if got := searchControl(t, tt, "Changes · main.go"); got != body || body.W != 256 {
 		t.Fatalf("stage overlay consumes file width: idle=%+v hover=%+v", body, got)
 	}
 	if searchControl(t, tt, "M") != status || searchControl(t, tt, "Version Not Loaded") != seen {
@@ -52,7 +52,7 @@ func TestChangeRowHasBalancedMarginsAndStatusSpacing(t *testing.T) {
 			right = x
 		}
 	}
-	if left < 10 || right < left || math.Abs(float64(left-(280-right-1))) > 1 {
+	if left < 0 || left >= int(body.X) || right <= int(body.X+body.W-1) || math.Abs(float64(left-(280-right-1))) > 1 {
 		t.Fatalf("selected row has uneven outside margins: left=%d right=%d", left, 280-right-1)
 	}
 	tt.Move(279, 79)
@@ -110,7 +110,7 @@ func TestChangesHoverIncludesTrailingStageAction(t *testing.T) {
 		t.Fatal("change row lost its file target")
 	}
 	// Sample the row padding on both sides, outside icons and child buttons.
-	const leftX, rightX, sampleY = 12, 262, 15
+	const leftX, rightX, sampleY = 6, 274, 15
 	before := tt.Image().RGBAAt(leftX, sampleY)
 	tt.Move(body.X+body.W/2, body.Y+body.H/2)
 	stage := searchControl(t, tt, "Stage main.go")
@@ -145,7 +145,7 @@ func TestChangesStageOverlayAtSidebarWidths(t *testing.T) {
 					ui.Column(c).Fill().Background(chrome).Children(func() { a.changeRow(c, changeItem{kind: kind, index: 0}) })
 				}, width, 80)
 				body := searchControl(t, tt, kindLabel(kind)+" · main.go")
-				if body.W != float32(width-32) {
+				if body.W != float32(width-24) {
 					t.Fatalf("idle action consumes file width: %+v", body)
 				}
 				if _, visible := tt.Find(action); visible {
@@ -339,6 +339,7 @@ func TestSettingsDraftOnlyAppliesWhenSaved(t *testing.T) {
 			a.settings.FontSize, a.settings.FontFamily, a.settings.Shell = 15, "Menlo", "/bin/zsh"
 			a.settingsOpen = true
 			tt := ui.NewTester(a.View, 1000, 760)
+			designClick(t, tt, "Settings: Terminal")
 			designClick(t, tt, "Decrease Font Size")
 			designClick(t, tt, "Terminal Font Family")
 			tt.Key(ui.Cmd, ui.KeyA)
@@ -359,6 +360,7 @@ func TestSettingsDraftOnlyAppliesWhenSaved(t *testing.T) {
 			}
 			a.settingsOpen = true
 			tt.Frame()
+			designClick(t, tt, "Settings: Terminal")
 			if a.settingsDraft.FontSize != 15 || a.settingsDraft.FontFamily != "Menlo" {
 				t.Fatal("reopening Settings restored the discarded draft")
 			}

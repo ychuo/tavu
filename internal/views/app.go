@@ -22,6 +22,10 @@ import (
 )
 
 type document struct {
+	fileDocumentState
+	documentNoticeState
+	Continuous              *continuousReviewState
+	Historical              bool
 	ID, Path, Label, Notice string
 	DiskHash                string
 	Preview, Stale          bool
@@ -46,6 +50,9 @@ type treeRow struct {
 }
 
 type App struct {
+	fileWorkspaceState
+	reviewTransitionState
+	gitWorkspaceState
 	win                                     *mygo.Window
 	ctx                                     context.Context
 	cancel                                  context.CancelFunc
@@ -54,6 +61,8 @@ type App struct {
 	settings                                storage.Settings
 	settingsDraft                           storage.Settings
 	settingsDraftOpen                       bool
+	settingsSection                         int
+	settingsQuery                           string
 	dataRoot                                string
 	writer                                  *persistqueue.Queue
 	projectCtx                              context.Context
@@ -196,7 +205,12 @@ func New(dataRoot string) *App {
 	if a.readerRatio < 10 || a.readerRatio > 90 {
 		a.readerRatio = 52
 	}
-	a.writer = persistqueue.New(func(err error) { a.update(func() { a.message = "Save failed: " + err.Error() }) })
+	a.writer = persistqueue.New(func(err error) { a.update(func() { a.message = a.tr("Save failed: %s", err.Error()) }) })
+	a.gitWriteGuard = func(action func()) {
+		if !a.guardFileTransition("Continue Git operation", nil, action) {
+			action()
+		}
+	}
 	if a.store != nil {
 		a.store.SetLimits(a.settings.MaxSnapshotBytes, a.settings.MaxSnapshots)
 	}
@@ -268,7 +282,7 @@ func (a *App) queue(key string, job func() error) {
 		return
 	}
 	if !a.writer.Put(key, job) {
-		a.message = "Save not queued. Try again."
+		a.message = a.tr("Save not queued. Try again.")
 	}
 }
 func (a *App) saveReview() {
@@ -304,7 +318,13 @@ func (a *App) shutdown() {
 		return
 	}
 	if a.busy || a.loading {
-		a.message = "Wait for this operation before quitting."
+		a.message = a.tr("Wait for this operation before quitting.")
+		return
+	}
+	if a.guardReviewTransition("Quit Tavu", nil, a.shutdown) {
+		return
+	}
+	if a.guardFileTransition("Quit Tavu", nil, a.shutdown) {
 		return
 	}
 	a.saveReview()
@@ -329,7 +349,7 @@ func (a *App) chooseProject() {
 	}
 	a.choosingProject = true
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: "Open Folder", Directory: true})
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Open Folder"), Directory: true})
 		a.update(func() {
 			a.choosingProject = false
 			a.fail(err)
@@ -341,6 +361,12 @@ func (a *App) chooseProject() {
 }
 func (a *App) requestProject(path string) {
 	if path == a.root {
+		return
+	}
+	if a.guardReviewTransition("Open another folder", nil, func() { a.requestProject(path) }) {
+		return
+	}
+	if a.guardFileTransition("Open another folder", nil, func() { a.requestProject(path) }) {
 		return
 	}
 	if a.hasActiveTerms() {
@@ -359,7 +385,8 @@ func (a *App) addDocument(d *document) {
 	}
 	if d.Preview {
 		for i, old := range a.documents {
-			if old.Preview {
+			if old.Preview && !old.fileDirty() && a.reviewDraftCount([]string{old.ID}) == 0 {
+				old.cancelContinuousReview()
 				a.documents[i] = d
 				a.selectDocument(d.ID)
 				return
@@ -371,12 +398,12 @@ func (a *App) addDocument(d *document) {
 }
 
 func (a *App) selectDocument(id string) {
+	previous := a.current()
 	for _, d := range a.documents {
 		if d.ID == id {
 			a.selectedDoc = id
 			a.readerTabs.requested = true
-			a.hasRange = false
-			a.commentFile = false
+			a.switchReviewDocument(previous, d)
 			a.commentFocus = false
 			a.focusReader()
 			a.decorate(d)
@@ -441,6 +468,10 @@ func (a *App) completeDocumentLoad(id uint64, apply func()) {
 func (a *App) replaceDocument(id string, d *document) {
 	for i, old := range a.documents {
 		if old.ID == id && old.SnapshotID == "" && (old.DiskHash != "" || old.Comparison != nil) {
+			if old.Comparison != nil && a.reviewDraftCount([]string{old.ID}) > 0 {
+				a.message = a.tr("Save or clear this comment before reloading.")
+				return
+			}
 			for _, existing := range a.documents {
 				if existing.ID == d.ID && existing.ID != id {
 					a.closeDocument(id)
@@ -462,12 +493,16 @@ func newCode(path string, raw []byte) *editor.State {
 	return &editor.State{Buffer: b, ReadOnly: true, NoScrollPastEnd: true, SoftWrap: true, Theme: codeTheme()}
 }
 func (a *App) closeDocument(id string) {
+	a.saveReviewDraft(a.current())
+	var closed *document
 	a.cancelDocumentLoad()
 	a.hasRange = false
 	a.commentFile = false
 	a.commentFocus = false
 	for i, d := range a.documents {
 		if d.ID == id {
+			closed = d
+			d.cancelContinuousReview()
 			a.documents = append(a.documents[:i], a.documents[i+1:]...)
 			break
 		}
@@ -477,6 +512,16 @@ func (a *App) closeDocument(id string) {
 		if len(a.documents) > 0 {
 			a.selectedDoc = a.documents[len(a.documents)-1].ID
 		}
+	}
+	a.reviewDocumentClosed(closed)
+}
+
+func (a *App) requestCloseDocument(id string) {
+	if a.guardReviewTransition("Close tab", []string{id}, func() { a.requestCloseDocument(id) }) {
+		return
+	}
+	if !a.requestCloseFile(id) {
+		a.closeDocument(id)
 	}
 }
 func short(s string) string {
@@ -506,13 +551,13 @@ func projectLabel(root string) string {
 }
 func (a *App) branchLabel() string {
 	if a.repo == nil {
-		return "Not a Git Repository"
+		return a.tr("Not a Git Repository")
 	}
 	if a.status.Unborn {
-		return "No commits · " + a.status.Branch
+		return a.tr("No commits · %s", a.status.Branch)
 	}
 	if a.status.Detached {
-		return "Detached HEAD · " + short(a.status.HEAD)
+		return a.tr("Detached HEAD · %s", short(a.status.HEAD))
 	}
 	return a.status.Branch
 }

@@ -151,7 +151,7 @@ func TestDesignSidebarIconNavigation(t *testing.T) {
 	a := designFixture(t)
 	tt := designTester(a, 1380, 920)
 	designClick(t, tt, "Explorer")
-	if a.sidebarTab != 0 || !tt.HasText("Quick Open") || tt.HasText("Find File") || !tt.HasText("internal/files/safe_reader.go") {
+	if a.sidebarTab != 0 || !tt.HasText("New File") || !tt.HasText("File Actions") || tt.HasText("Find File") || !tt.HasText("internal/files/safe_reader.go") {
 		t.Fatal("file icon did not reveal the project file tree")
 	}
 	designClick(t, tt, "Search")
@@ -266,7 +266,7 @@ func TestDesignReaderMenuAndDocumentLifecycle(t *testing.T) {
 		if full.Code.SoftWrap || !full.Code.ReadOnly || full.Code.Buffer.String() != item.content {
 			t.Fatal("word wrap changed the file's content or read-only state")
 		}
-		designClick(t, tt, "Close File "+full.Label)
+		designClick(t, tt, "Close File "+a.documentTabLabel(full))
 		if a.current() != diffDoc || diffDoc.Diff != originalState {
 			t.Fatalf("closing %s did not return to the preserved comparison", item.suffix)
 		}
@@ -284,7 +284,7 @@ func TestDesignReaderMenuAndDocumentLifecycle(t *testing.T) {
 			t.Fatal("reader controls disappeared while a document remained open")
 		}
 	}
-	designClick(t, tt, "Close File "+diffDoc.Label)
+	designClick(t, tt, "Close File "+a.documentTabLabel(diffDoc))
 	if a.current() != nil || a.effectivePaneMode() != "empty" || !tt.HasText("Nothing open") {
 		t.Fatal("closing the last tab did not show the unified workspace empty state")
 	}
@@ -299,7 +299,7 @@ func TestDesignResponsiveControls(t *testing.T) {
 			if size[0] == 760 {
 				writeDesignScreenshot(t, tt, "TAVU_DESIGN_SMALL_SCREENSHOT")
 			}
-			requireDesignControlsInside(t, tt, size[0], size[1], "Toggle Sidebar", "Switch Project", "New Terminal", "Split View", "Maximize Reader", "Settings", "Explorer", "Search", "Source Control", "More Actions", "Inline", "Side by Side", "Mark Seen", "Add Comment", "Close File "+a.current().Label)
+			requireDesignControlsInside(t, tt, size[0], size[1], "Toggle Sidebar", "Switch Project", "New Terminal", "Split View", "Maximize Reader", "Settings", "Explorer", "Search", "Source Control", "More Actions", "Inline", "Side by Side", "Mark Seen", "Add Comment", "Close File "+a.documentTabLabel(a.current()))
 			designClick(t, tt, "Search")
 			requireDesignControlsInside(t, tt, size[0], size[1], "Search in Files", "Run Search", "More Actions")
 			designClick(t, tt, "Toggle Sidebar")
@@ -532,8 +532,12 @@ func TestDesignSmallWindowModalActions(t *testing.T) {
 		}
 		a.settingsOpen = true
 		tt := designTester(a, width, height)
-		requireDesignControlsInside(t, tt, width, height, "Tavu Settings", "Shell Path", "Decrease Font Size", "Increase Font Size", "Close Settings", "Save Settings")
+		designClick(t, tt, "Settings: Terminal")
+		requireDesignControlsInside(t, tt, width, height, "Tavu Settings", "Terminal Font Family", "Decrease Font Size", "Increase Font Size", "Close Settings", "Save Settings")
 		writeDesignScreenshot(t, tt, "TAVU_DESIGN_SETTINGS_SCREENSHOT")
+		tt.Scroll(600, 380, 0, 460)
+		tt.Frame()
+		requireDesignControlsInside(t, tt, width, height, "Shell Path", "Close Settings", "Save Settings")
 		designClick(t, tt, "Close Settings")
 		if a.settingsOpen {
 			t.Fatal("settings footer could not close the modal at minimum window size")

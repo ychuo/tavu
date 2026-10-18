@@ -37,7 +37,7 @@ func TestReviewVersionsKeepCurrentChangesSimple(t *testing.T) {
 			if a.reviewTab != 0 || !tt.HasText("Changes · internal/files/safe_reader.go") {
 				t.Fatal("current changes did not remain available as the default list")
 			}
-			click(t, tt, "Review Versions")
+			click(t, tt, "Git Actions")
 			for _, item := range []string{"Save Review Version", "Open Saved Review", "Current Changes"} {
 				if !slices.Contains(tt.Menu(), item) {
 					t.Errorf("review version menu lacks %q: %v", item, tt.Menu())
@@ -68,7 +68,7 @@ func TestReviewVersionsExplicitNavigationPreservesOpenDocument(t *testing.T) {
 	}
 	openSaved := func() {
 		t.Helper()
-		click(t, tt, "Review Versions")
+		click(t, tt, "Git Actions")
 		if err := tt.ChooseMenuItem("Open Saved Review"); err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestReviewVersionsExplicitNavigationPreservesOpenDocument(t *testing.T) {
 		t.Fatal("View Current did not restore current changes while preserving the reader")
 	}
 	openSaved()
-	click(t, tt, "Review Versions")
+	click(t, tt, "Git Actions")
 	if err := tt.ChooseMenuItem("Current Changes"); err != nil {
 		t.Fatal(err)
 	}

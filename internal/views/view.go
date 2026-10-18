@@ -11,9 +11,10 @@ import (
 )
 
 func (a *App) View(c *ui.Context) {
-	c.SetTheme(appTheme())
+	c.SetTheme(appTheme(resolvedThemeMode(a.settings.Theme, c.Theme().Dark)))
+	a.syncFileDocuments()
 	a.workspaceShortcuts(c)
-	ui.Column(c).Fill().Background(chrome).Children(func() {
+	ui.Column(c).Fill().Background(palette(c).chrome).Children(func() {
 		a.header(c)
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(4, workspaceInset, 0, workspaceInset).Disabled(a.loading || a.quitting).Children(func() {
 			if a.sidebar {
@@ -66,15 +67,15 @@ func (a *App) setMode(mode string) {
 func (a *App) header(c *ui.Context) {
 	bar := c.TitleBar()
 	w, _ := c.Size()
-	ui.Row(c).Height(max(44, bar.Height)).FillWidth().Padding(0, bar.Right+10, 0, bar.Left+10).Gap(6).AlignItems(ui.Center).Background(chrome).DragWindow().Children(func() {
-		toolToggle(c, "panel-left", "Toggle Sidebar", a.sidebar).Description("Toggle Sidebar · ⌘B").OnClick(func() { a.sidebar = !a.sidebar; a.saveSettings() })
+	ui.Row(c).Height(max(44, bar.Height)).FillWidth().Padding(0, bar.Right+10, 0, bar.Left+10).Gap(6).AlignItems(ui.Center).Background(palette(c).chrome).DragWindow().Children(func() {
+		toolToggle(c, "panel-left", "Toggle Sidebar", a.sidebar).Description(tr(c, "Toggle Sidebar · ⌘B")).OnClick(func() { a.sidebar = !a.sidebar; a.saveSettings() })
 		ui.Box(c).Grow(1).DragWindow()
 		project := flatButton(c, "Switch Project").Absolute().Left(w/2-140).Top((max(44, bar.Height)-28)/2).Width(280).Height(28).Padding(0, 12).Justify(ui.Center).Children(func() {
 			glyph(c, "folder").TextColor(c.Theme().TextMuted).FontSize(14)
 			ui.Text(c, projectLabel(a.root)).SingleLine().MinWidth(0)
 			glyph(c, "chevron-down").FontSize(11).TextColor(c.Theme().TextMuted)
 		}).Menu(func(m *ui.Menu) {
-			if m.Item("Open Folder…").Chosen() {
+			if m.Item(a.tr("Open Folder…")).Chosen() {
 				a.chooseProject()
 			}
 			if len(a.settings.RecentProjects) > 0 {
@@ -92,20 +93,20 @@ func (a *App) header(c *ui.Context) {
 		if a.terms == nil || len(a.terms.Sessions()) == 0 {
 			toolButton(c, "terminal", "New Terminal").Disabled(a.termStarting || a.terms == nil).OnClick(func() { a.newTerminal(false) })
 		} else {
-			toolToggle(c, "terminal", "Maximize Terminal", mode == "terminal").OnClick(func() { a.setMode("terminal") })
+			toolToggle(c, "terminal", "Maximize Terminal", !a.settingsOpen && mode == "terminal").OnClick(func() { a.setMode("terminal") })
 		}
-		toolToggle(c, "rows-2", "Split View", mode == "split").Description("Split View · Right-click for layout").Disabled(a.current() == nil || a.terms == nil || len(a.terms.Sessions()) == 0).OnClick(func() { a.setMode("split") }).ContextMenu(a.arrangementMenu)
+		toolToggle(c, "rows-2", "Split View", !a.settingsOpen && mode == "split").Description(tr(c, "Split View · Right-click for layout")).Disabled(a.current() == nil || a.terms == nil || len(a.terms.Sessions()) == 0).OnClick(func() { a.setMode("split") }).ContextMenu(a.arrangementMenu)
 		if a.current() == nil {
 			toolButton(c, "files", "Open File…").Disabled(a.fs == nil).OnClick(a.openQuickOpen)
 		} else {
-			toolToggle(c, "files", "Maximize Reader", mode == "review").OnClick(func() { a.setMode("review") })
+			toolToggle(c, "files", "Maximize Reader", !a.settingsOpen && mode == "review").OnClick(func() { a.setMode("review") })
 		}
-		toolButton(c, "settings", "Settings").Description("Settings · ⌘,").OnClick(func() { a.settingsOpen = true })
+		toolToggle(c, "settings", "Settings", a.settingsOpen).Description(tr(c, "Settings · ⌘,")).OnClick(func() { a.settingsOpen = true })
 	})
 }
 
 func (a *App) statusbar(c *ui.Context) {
-	ui.Row(c).Height(statusHeight).FillWidth().Padding(0, 16).Gap(10).AlignItems(ui.Center).Background(chrome).Children(func() {
+	ui.Row(c).Height(statusHeight).FillWidth().Padding(0, 16).Gap(10).AlignItems(ui.Center).Background(palette(c).chrome).Children(func() {
 		glyph(c, "git-branch").FontSize(12).TextColor(c.Theme().TextMuted)
 		ui.Text(c, a.branchLabel()).FontSize(12).MaxWidth(160).SingleLine().Tooltip(a.branchLabel()).TextColor(c.Theme().TextMuted)
 		msg := a.message
@@ -116,10 +117,10 @@ func (a *App) statusbar(c *ui.Context) {
 		} else if a.refreshing {
 			msg = "Refreshing changes…"
 		}
-		ui.Text(c, msg).FontSize(12).SingleLine().Grow(1).MinWidth(0).Tooltip(msg).TextColor(c.Theme().TextMuted)
+		ui.Text(c, tr(c, msg)).FontSize(12).SingleLine().Grow(1).MinWidth(0).Tooltip(tr(c, msg)).TextColor(c.Theme().TextMuted)
 		if n := len(a.state.Review.Unresolved()); n > 0 {
 			glyph(c, "message-square").FontSize(12)
-			ui.Text(c, fmt.Sprintf("%d unresolved", n)).FontSize(12)
+			ui.Text(c, tr(c, "%d unresolved", n)).FontSize(12)
 		}
 		if d := a.current(); d != nil {
 			ui.Text(c, "UTF-8").FontSize(12).TextColor(c.Theme().TextMuted)
@@ -131,7 +132,7 @@ func (a *App) statusbar(c *ui.Context) {
 }
 
 func (a *App) sidebarView(c *ui.Context) {
-	ui.Column(c.Key("navigation-pane")).Fill().Background(panel).Radius(9).Clip().Children(func() {
+	ui.Column(c.Key("navigation-pane")).Fill().Background(palette(c).panel).Radius(9).Clip().Children(func() {
 		ui.Row(c).Height(48).Padding(0, 10).Gap(6).FillWidth().AlignItems(ui.Center).Children(func() {
 			for _, item := range []struct {
 				icon, label string
@@ -179,9 +180,7 @@ func (a *App) filesView(c *ui.Context) {
 	ui.Row(c).Padding(0, 14).Height(36).FillWidth().Gap(2).AlignItems(ui.Center).Children(func() {
 		glyph(c, "folder").FontSize(14).TextColor(c.Theme().TextMuted)
 		ui.Text(c, projectLabel(a.root)).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-		toolButton(c, "search", "Quick Open").Disabled(a.fs == nil).OnClick(a.openQuickOpen)
-		toolButton(c, "eye", "Reveal Active File").Disabled(a.current() == nil).OnClick(a.revealActiveFile)
-		toolButton(c, "minus", "Collapse Folders").OnClick(func() { a.expanded = map[string]bool{}; a.rebuildRows() })
+		a.explorerFileActions(c)
 	})
 	a.listState.Key = func(i int) any { return a.rows[i].Entry.Path }
 	if a.revealPath != "" {
@@ -208,9 +207,9 @@ func (a *App) filesView(c *ui.Context) {
 
 func (a *App) fileRow(c *ui.Context, path, label string, depth int, dir, symlink, blocked bool, action func()) {
 	selected := a.current() != nil && a.current().Path == path && !dir
-	b := flatButton(c.Key(path), path).Height(28).FillWidth().Padding(0, 8, 0, float32(8+depth*14)).Radius(5).Tooltip(path).Disabled(blocked).Selected(selected)
+	b := flatButton(c.Key(path), path).Label(path).Height(28).FillWidth().Padding(0, 8, 0, float32(8+depth*14)).Radius(5).Tooltip(path).Disabled(blocked).Selected(selected)
 	if selected {
-		b.Background(activeFill).TextColor(c.Theme().Text)
+		b.Background(palette(c).activeFill).TextColor(c.Theme().Text)
 	}
 	b.Children(func() {
 		if dir {
@@ -227,7 +226,7 @@ func (a *App) fileRow(c *ui.Context, path, label string, depth int, dir, symlink
 		if symlink {
 			glyph(c, "arrow-up-right").FontSize(11).TextColor(c.Theme().TextMuted)
 		}
-	}).OnClick(action)
+	}).OnClick(action).ContextMenu(func(m *ui.Menu) { a.fileMenu(m, path, dir) })
 }
 
 type changeItem struct {
@@ -240,26 +239,12 @@ func (a *App) changesView(c *ui.Context) {
 	if a.snapshot == nil {
 		a.reviewTab = 0
 	}
-	ui.Column(c).Padding(4, 12, 10, 12).Gap(8).FillWidth().Children(func() {
-		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-			glyph(c, "git-branch").FontSize(13).TextColor(c.Theme().TextMuted)
-			ui.Text(c, a.branchLabel()).FontSize(13).SingleLine().MinWidth(0).Grow(1)
-			toolButton(c, "more-horizontal", "Review Versions").Menu(func(m *ui.Menu) {
-				if m.Item("Save Review Version").Disabled(a.repo == nil || a.busy || a.loading).Chosen() {
-					a.startReview()
-				}
-				if m.Item("Open Saved Review").Disabled(a.snapshot == nil).Chosen() {
-					a.reviewTab = 1
-				}
-				if m.Item("Current Changes").Checked(a.reviewTab == 0).Chosen() {
-					a.reviewTab = 0
-				}
-			})
-		})
+	ui.Column(c).Padding(4, scmContentInset, 10, scmContentInset).Gap(8).FillWidth().Children(func() {
+		a.gitControls(c)
 		if a.reviewTab == 1 {
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 				glyph(c, "archive").FontSize(12).TextColor(c.Theme().TextMuted)
-				ui.Text(c, "Saved Review · "+a.snapshot.CreatedAt.Local().Format("01-02 15:04")).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine().MinWidth(0).Grow(1).Tooltip("Saved version; does not follow workspace changes")
+				ui.Text(c, tr(c, "Saved Review · %s", a.snapshot.CreatedAt.Local().Format("01-02 15:04"))).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine().MinWidth(0).Grow(1).Tooltip(tr(c, "Saved version; does not follow workspace changes"))
 				toolButton(c, "undo-2", "View Current").OnClick(func() { a.reviewTab = 0 })
 			})
 		}
@@ -301,21 +286,18 @@ func (a *App) changesView(c *ui.Context) {
 			} else if a.reviewTab == 1 {
 				text = "No saved changes"
 			}
-			ui.Text(c, text).FontSize(13).TextColor(c.Theme().TextMuted)
+			ui.Text(c, tr(c, text)).FontSize(13).TextColor(c.Theme().TextMuted)
+			if a.repo == nil {
+				a.gitInitializeView(c)
+			}
 		})
 	} else {
 		ui.List(c, nil, len(items), func(i int) {
 			item := items[i]
 			if item.header {
-				flatButton(c.Key("group:"+item.kind), "Toggle "+kindLabel(item.kind)).Height(38).FillWidth().Padding(6, 16, 0, 12).Gap(6).Radius(0).Children(func() {
-					icon := "chevron-down"
-					if a.collapsedChanges[item.kind] {
-						icon = "chevron-right"
-					}
-					glyph(c, icon).FontSize(11).TextColor(c.Theme().TextMuted)
-					ui.Text(c, kindLabel(item.kind)).FontSize(13).TextColor(c.Theme().Text).Grow(1)
+				scmSectionHeader(c.Key("group:"+item.kind), tr(c, "Toggle %s", tr(c, kindLabel(item.kind))), kindLabel(item.kind), !a.collapsedChanges[item.kind], func() {
 					pill(c, fmt.Sprint(item.count), c.Theme().TextMuted)
-				}).OnClick(func() {
+				}, func() {
 					if a.collapsedChanges == nil {
 						a.collapsedChanges = map[string]bool{}
 					}
@@ -326,6 +308,7 @@ func (a *App) changesView(c *ui.Context) {
 			a.changeRow(c, item)
 		}).Grow(1).FillWidth()
 	}
+	a.gitHistoryView(c)
 }
 
 func (a *App) changeRow(c *ui.Context, item changeItem) {
@@ -381,15 +364,15 @@ func (a *App) changeRow(c *ui.Context, item changeItem) {
 	if n > 0 {
 		statusWidth += 24
 	}
-	ui.Row(c.Key(item.kind+":"+path)).Height(30).FillWidth().Padding(1, 12).Children(func() {
-		row := ui.Row(c).Fill().Radius(4).Gap(0).Padding(0, 4).AlignItems(ui.Center)
+	ui.Row(c.Key(item.kind+":"+path)).Height(30).FillWidth().Padding(1, scmRowGutter).Children(func() {
+		row := ui.Row(c).Fill().Radius(4).Gap(0).Padding(0, scmRowPadding).AlignItems(ui.Center)
 		if selected {
-			row.Background(activeFill)
+			row.Background(palette(c).activeFill)
 		} else if row.Hovered() {
 			row.Background(c.Theme().SurfaceHover)
 		}
 		row.Children(func() {
-			b := ui.ButtonBase(c).Label(kindLabel(item.kind)+" · "+path).Background(ui.Transparent).Gap(7).AlignItems(ui.Center).Grow(1).MinWidth(0).FillHeight().Padding(0, 0, 0, 4).Selected(selected).Tooltip(path + "\n" + seen + fmt.Sprintf(" · %d unresolved", n))
+			b := ui.ButtonBase(c).Label(tr(c, kindLabel(item.kind)) + " · " + path).Background(ui.Transparent).Gap(7).AlignItems(ui.Center).Grow(1).MinWidth(0).FillHeight().Padding(0).Selected(selected).Tooltip(path + "\n" + tr(c, seen) + " · " + tr(c, "%d unresolved", n))
 			if selected {
 				b.Background(ui.Transparent).TextColor(c.Theme().Text)
 			}
@@ -407,35 +390,44 @@ func (a *App) changeRow(c *ui.Context, item changeItem) {
 					}
 					ui.Box(c).Size(24, 24).Center().Children(func() {
 						if strings.HasPrefix(seen, "Seen") {
-							glyph(c, "check").FontSize(12).TextColor(c.Theme().Success).Label(seen)
+							glyph(c, "check").FontSize(12).TextColor(c.Theme().Success).Label(tr(c, seen))
 						} else {
-							glyph(c, "eye").FontSize(12).TextColor(c.Theme().TextMuted).Label(seen)
+							glyph(c, "eye").FontSize(12).TextColor(c.Theme().TextMuted).Label(tr(c, seen))
 						}
 					})
 					if strings.Contains(seen, "Changed") {
-						ui.Box(c).Size(24, 24).Center().Children(func() { glyph(c, "clock").FontSize(12).TextColor(c.Theme().Warning).Label("Changed") })
+						ui.Box(c).Size(24, 24).Center().Children(func() { glyph(c, "clock").FontSize(12).TextColor(c.Theme().Warning).Label(tr(c, "Changed")) })
 					}
 					if n > 0 {
-						ui.Box(c).Size(24, 24).Center().Children(func() { pill(c, fmt.Sprint(n), accent) })
+						ui.Box(c).Size(24, 24).Center().Children(func() { pill(c, fmt.Sprint(n), palette(c).accent) })
 					}
 				})
-			}).OnClick(open)
+			}).OnClick(open).ContextMenu(func(m *ui.Menu) {
+				if a.reviewTab == 0 {
+					change := a.status.Changes[item.index]
+					if change.Kind == "conflict" {
+						a.gitConflictMenu(m, change)
+					} else {
+						a.gitHunkMenu(m, change)
+					}
+				}
+			})
 			if a.reviewTab == 0 && item.kind != "conflict" {
 				// Cover the trailing text on hover, keeping M/Seen and comments
 				// visible and the file body's width unchanged.
-				bar := ui.Row(c.Key("git-action")).Absolute().Right(4+statusWidth).Top(2).Height(24).Padding(0, 0, 0, 4).Radius(3)
+				bar := ui.Row(c.Key("git-action")).Absolute().Right(scmRowPadding+statusWidth).Top(2).Height(24).Padding(0, 0, 0, 4).Radius(3)
 				var action ui.Element
 				bar.Children(func() {
 					if item.kind == "staged" {
-						action = toolButton(c, "minus", "Unstage "+path).Description("Unstage Changes").Size(24, 24).Disabled(a.busy).OnClick(func() { a.writeGit(false, path) })
+						action = toolButton(c, "minus", tr(c, "Unstage %s", path)).Description(tr(c, "Unstage Changes")).Size(24, 24).Disabled(a.busy).OnClick(func() { a.writeGit(false, path) })
 					} else {
-						action = toolButton(c, "plus", "Stage "+path).Description("Stage Changes").Size(24, 24).Disabled(a.busy).OnClick(func() { a.writeGit(true, path) })
+						action = toolButton(c, "plus", tr(c, "Stage %s", path)).Description(tr(c, "Stage Changes")).Size(24, 24).Disabled(a.busy).OnClick(func() { a.writeGit(true, path) })
 					}
 				})
 				if row.Hovered() || b.FocusVisible() || action.FocusVisible() {
-					background := panel
+					background := palette(c).panel
 					if selected {
-						background = activeFill
+						background = palette(c).activeFill
 					} else if row.Hovered() {
 						background = c.Theme().SurfaceHover
 					}
@@ -459,7 +451,7 @@ func (a *App) commentCount(path, kind string) int {
 }
 
 func (a *App) terminalView(c *ui.Context) {
-	pane := ui.Column(c.Key("terminal-pane")).Fill().Background(panel).Radius(9).Clip()
+	pane := ui.Column(c.Key("terminal-pane")).Fill().Background(palette(c).panel).Radius(9).Clip()
 	a.trackPaneFocus(pane, "terminal", "")
 	pane.Children(func() {
 		revealTab := a.terminalTabs.update(a.activeTerm, a.terminalWidth(c))
@@ -470,7 +462,7 @@ func (a *App) terminalView(c *ui.Context) {
 						for i, s := range a.terms.Sessions() {
 							label := terminalTabLabel(i, s, a.root)
 							if s.Exited {
-								label += fmt.Sprintf(" [Exited: %d]", s.ExitCode)
+								label += tr(c, " [Exited: %d]", s.ExitCode)
 							}
 							tab := a.tab(c, s.ID, "terminal", label, s.Title, false, a.activeTerm == s.ID, func() {
 								if s.ID == a.secondTerm {
@@ -479,8 +471,8 @@ func (a *App) terminalView(c *ui.Context) {
 								a.activeTerm = s.ID
 								a.terminalTabs.requested = true
 								a.focusTerminal()
-							}, func() { a.requestCloseTerminal(s.ID) }, "Close Terminal "+s.ID).ContextMenu(func(m *ui.Menu) {
-								if m.Item("Rename Terminal…").Chosen() {
+							}, func() { a.requestCloseTerminal(s.ID) }, tr(c, "Close Terminal %s", s.ID)).ContextMenu(func(m *ui.Menu) {
+								if m.Item(a.tr("Rename Terminal…")).Chosen() {
 									a.renameTerminalID = s.ID
 									a.terminalNameDraft = s.CustomLabel
 								}
@@ -492,7 +484,7 @@ func (a *App) terminalView(c *ui.Context) {
 					}
 				})
 			})
-			toolButton(c, "plus", "New Terminal").Description("New Terminal · ⌘⇧T").Disabled(a.termStarting || a.terms == nil).OnClick(func() { a.newTerminal(false) })
+			toolButton(c, "plus", "New Terminal").Description(tr(c, "New Terminal · ⌘⇧T")).Disabled(a.termStarting || a.terms == nil).OnClick(func() { a.newTerminal(false) })
 			toolToggle(c, "columns-2", "Split Terminal", a.secondTerm != "").Disabled(a.termStarting || a.activeTerm == "").OnClick(func() {
 				if a.secondTerm != "" {
 					a.secondTerm = ""
@@ -508,13 +500,17 @@ func (a *App) terminalView(c *ui.Context) {
 			ui.Column(c).Grow(1).FillWidth().Center().Gap(12).Children(func() {
 				glyph(c, "terminal").FontSize(32).TextColor(c.Theme().TextMuted)
 				if a.root == "" {
-					ui.Text(c, "Your local workspace").FontSize(16)
-					ui.Text(c, "Open a folder to start a terminal").FontSize(13).TextColor(c.Theme().TextMuted)
-					flatButton(c, "Open Folder…").Padding(8, 12).Children(func() { glyph(c, "folder-open"); ui.Text(c, "Open Folder"); pill(c, "⌘O", c.Theme().TextMuted) }).OnClick(a.chooseProject)
+					ui.Text(c, tr(c, "Your local workspace")).FontSize(16)
+					ui.Text(c, tr(c, "Open a folder to start a terminal")).FontSize(13).TextColor(c.Theme().TextMuted)
+					flatButton(c, "Open Folder…").Padding(8, 12).Children(func() {
+						glyph(c, "folder-open")
+						ui.Text(c, tr(c, "Open Folder"))
+						pill(c, "⌘O", c.Theme().TextMuted)
+					}).OnClick(a.chooseProject)
 				} else {
-					ui.Text(c, "No open terminals").FontSize(16)
-					ui.Text(c, "Start a new session in this folder.").FontSize(13).TextColor(c.Theme().TextMuted)
-					flatButton(c, "Start Terminal").Padding(8, 12).Disabled(a.termStarting || a.terms == nil).Children(func() { glyph(c, "plus"); ui.Text(c, "New Terminal"); pill(c, "⌘⇧T", c.Theme().TextMuted) }).OnClick(func() { a.newTerminal(false) })
+					ui.Text(c, tr(c, "No open terminals")).FontSize(16)
+					ui.Text(c, tr(c, "Start a new session in this folder.")).FontSize(13).TextColor(c.Theme().TextMuted)
+					flatButton(c, "Start Terminal").Padding(8, 12).Disabled(a.termStarting || a.terms == nil).Children(func() { glyph(c, "plus"); ui.Text(c, tr(c, "New Terminal")); pill(c, "⌘⇧T", c.Theme().TextMuted) }).OnClick(func() { a.newTerminal(false) })
 				}
 			})
 			return
@@ -546,9 +542,9 @@ func (a *App) tab(c *ui.Context, id, icon, label, description string, preview, s
 	row := ui.Row(c.Key("tab:"+id)).Height(32).MaxWidth(240).Shrink(0).Gap(0).Padding(0, 4).AlignItems(ui.Center).Radius(5)
 	if selected {
 		if icon == "terminal" {
-			row.Background(terminalTabFill)
+			row.Background(palette(c).terminalTabFill)
 		} else {
-			row.Background(activeFill)
+			row.Background(palette(c).activeFill)
 		}
 	}
 	if row.Hovered() && !selected {
@@ -561,7 +557,7 @@ func (a *App) tab(c *ui.Context, id, icon, label, description string, preview, s
 			b.Background(ui.Transparent).TextColor(c.Theme().Text)
 		}
 		b.Children(func() {
-			color := ui.Hex("#5a9fe0")
+			color := palette(c).link
 			if icon == "terminal" {
 				color = c.Theme().TextMuted
 			}

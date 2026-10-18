@@ -192,17 +192,17 @@ func (a *App) finishSearch(id, gen uint64, result files.SearchResult, err error)
 func searchField(c *ui.Context) ui.Element {
 	row := ui.Row(c).FillWidth().Height(34).Padding(2).Gap(0).AlignItems(ui.Center).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6)
 	if row.FocusWithin() {
-		row.BorderColor(accent.Alpha(.65))
+		row.BorderColor(palette(c).accent.Alpha(.65))
 	}
 	return row
 }
 
 func searchInput(c *ui.Context, value *string, label, placeholder string) ui.Element {
-	return ui.TextInputBase(c, value).Label(label).Placeholder(placeholder).FontSize(13).Height(28).Padding(0, 5).Grow(1).MinWidth(0)
+	return ui.TextInputBase(c, value).Label(tr(c, label)).Placeholder(tr(c, placeholder)).FontSize(13).Height(28).Padding(0, 5).Grow(1).MinWidth(0)
 }
 
 func (a *App) searchView(c *ui.Context) {
-	if a.searchOpenFiles && !a.busy && !a.workspaceModalOpen() && a.searchOpenPaths != strings.Join(a.searchOptions().Paths, "\x00") {
+	if a.searchOpenFiles && !a.busy && !a.fileBusy && !a.workspaceModalOpen() && a.searchOpenPaths != strings.Join(a.searchOptions().Paths, "\x00") {
 		a.runSearch(false)
 	}
 	ui.Column(c).Padding(8, 8).Gap(8).FillWidth().Children(func() {
@@ -238,8 +238,8 @@ func (a *App) searchView(c *ui.Context) {
 						if a.searchTruncated {
 							description = "Narrow search to replace all"
 						}
-						toolButton(c, "replace-all", "Replace All").Size(24, 24).Description(description).
-							Disabled(a.fs == nil || a.textQuery == "" || !a.searchCompleted || a.searchTruncated || len(a.matches) == 0 || a.searching || a.searchReplacementNotice != "" || a.replacePreparing || a.busy || a.loading).OnClick(a.prepareReplace)
+						toolButton(c, "replace-all", "Replace All").Size(24, 24).Description(tr(c, description)).
+							Disabled(a.fs == nil || a.textQuery == "" || !a.searchCompleted || a.searchTruncated || len(a.matches) == 0 || a.searching || a.searchReplacementNotice != "" || a.replacePreparing || a.busy || a.fileBusy || a.loading).OnClick(a.prepareReplace)
 					})
 				}
 			})
@@ -266,7 +266,7 @@ func (a *App) searchView(c *ui.Context) {
 		})
 		if a.searchDetails {
 			ui.Column(c).FillWidth().Padding(0, 0, 0, 22).Gap(6).Children(func() {
-				ui.Text(c, "Files to include").FontSize(12)
+				ui.Text(c, tr(c, "Files to include")).FontSize(12)
 				searchField(c.Key("include-input-row")).Children(func() {
 					input := searchInput(c, &a.searchInclude, "Files to include", "e.g. *.go, src/**")
 					if input.Changed() || input.Submitted() {
@@ -275,7 +275,7 @@ func (a *App) searchView(c *ui.Context) {
 					toolToggle(c, "columns-2", "Open Files Only", a.searchOpenFiles).Size(24, 24).
 						Description("Search disk versions of open files").OnClick(func() { a.searchOpenFiles = !a.searchOpenFiles; a.runSearch(true) })
 				})
-				ui.Text(c, "Files to exclude").FontSize(12)
+				ui.Text(c, tr(c, "Files to exclude")).FontSize(12)
 				searchField(c.Key("exclude-input-row")).Children(func() {
 					input := searchInput(c, &a.searchExclude, "Files to exclude", "e.g. *_test.go")
 					if input.Changed() || input.Submitted() {
@@ -290,13 +290,13 @@ func (a *App) searchView(c *ui.Context) {
 				ui.Text(c, scope).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth().SingleLine().Tooltip(scope)
 			}
 			if a.searchNotice != "" {
-				ui.Text(c, a.searchNotice).FontSize(12).TextColor(c.Theme().Warning).FillWidth()
+				ui.Text(c, tr(c, a.searchNotice)).FontSize(12).TextColor(c.Theme().Warning).FillWidth()
 			}
 			if a.searchReplacementNotice != "" {
-				ui.Text(c, a.searchReplacementNotice).FontSize(12).TextColor(c.Theme().Warning).FillWidth()
+				ui.Text(c, tr(c, a.searchReplacementNotice)).FontSize(12).TextColor(c.Theme().Warning).FillWidth()
 			}
 			if a.searchSkipped > 0 {
-				ui.Text(c, fmt.Sprintf("%d large or non-text files skipped", a.searchSkipped)).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+				ui.Text(c, tr(c, "%d large or non-text files skipped", a.searchSkipped)).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
 			}
 			a.replacementConfirmation(c)
 			a.replacementFeedback(c)
@@ -307,31 +307,31 @@ func (a *App) searchView(c *ui.Context) {
 
 func (a *App) searchSummary() string {
 	if a.replacePreparing {
-		return "Preparing replacements…"
+		return a.tr("Preparing replacements…")
 	}
 	if a.searching {
-		return "Searching…"
+		return a.tr("Searching…")
 	}
 	if !a.searchCompleted && a.searchNotice != "" {
 		if len(a.matches) > 0 {
-			return fmt.Sprintf("%d results · Incomplete", len(a.matches))
+			return a.tr("%d results · Incomplete", len(a.matches))
 		}
-		return "Search incomplete"
+		return a.tr("Search incomplete")
 	}
 	if a.searchCompleted || len(a.matches) > 0 {
 		if len(a.matches) == 0 {
-			return "No results"
+			return a.tr("No results")
 		}
 		if a.searchTruncated {
-			return fmt.Sprintf("First %d results", len(a.matches))
+			return a.tr("First %d results", len(a.matches))
 		}
 		paths := map[string]bool{}
 		for _, m := range a.matches {
 			paths[m.Path] = true
 		}
-		return searchCountLabel(len(a.matches), len(paths), "result")
+		return a.localizedSearchCount(len(a.matches), len(paths), "result")
 	}
-	return "Search project files"
+	return a.tr("Search project files")
 }
 
 func (a *App) allSearchResultsCollapsed() bool {
@@ -350,16 +350,16 @@ func (a *App) allSearchResultsCollapsed() bool {
 func (a *App) searchScopeLabel() string {
 	var labels []string
 	if a.searchOpenFiles {
-		labels = append(labels, "Open files only")
+		labels = append(labels, a.tr("Open files only"))
 	}
 	if a.searchInclude != "" {
-		labels = append(labels, "Files: "+a.searchInclude)
+		labels = append(labels, a.tr("Files: %s", a.searchInclude))
 	}
 	if a.searchExclude != "" {
-		labels = append(labels, "Exclude: "+a.searchExclude)
+		labels = append(labels, a.tr("Exclude: %s", a.searchExclude))
 	}
 	if a.searchAllFiles {
-		labels = append(labels, "Dependencies included")
+		labels = append(labels, a.tr("Dependencies included"))
 	}
 	return strings.Join(labels, " · ")
 }
@@ -391,7 +391,11 @@ func searchMatchKey(m files.Match) string {
 	return fmt.Sprintf("%s:%d:%d", m.Path, m.Line, m.Column+1)
 }
 
-func searchMatchSpans(m files.Match) []ui.Span {
+func searchMatchSpans(m files.Match, mode ...string) []ui.Span {
+	p := inkPalette
+	if lightMode(mode) {
+		p = paperPalette
+	}
 	start, end := m.Column, m.EndColumn
 	if start < 0 || end < start || end > len(m.Text) {
 		return []ui.Span{{Text: strings.TrimSpace(m.Text)}}
@@ -413,19 +417,19 @@ func searchMatchSpans(m files.Match) []ui.Span {
 	if right < len(m.Text) {
 		suffix += "…"
 	}
-	return []ui.Span{{Text: prefix}, {Text: m.Text[start:end], Color: accent, Background: activeFill, Weight: 600}, {Text: suffix}}
+	return []ui.Span{{Text: prefix}, {Text: m.Text[start:end], Color: p.accent, Background: p.activeFill, Weight: 600}, {Text: suffix}}
 }
 
 // Keep the changed text near the start of a narrow result row. The complete
 // before/after content remains available in the reader; long snippets are only
 // shortened for display, never used as replacement source bytes.
-func searchReplacementSpans(m files.Match, replacement string) []ui.Span {
+func searchReplacementSpans(m files.Match, replacement string, mode ...string) []ui.Span {
 	start, end := m.Column, m.EndColumn
 	if start < 0 || end < start || end > len(m.Text) {
-		return searchMatchSpans(m)
+		return searchMatchSpans(m, mode...)
 	}
 	if m.Text[start:end] == replacement {
-		return searchMatchSpans(m)
+		return searchMatchSpans(m, mode...)
 	}
 	left := start
 	for n := 0; left > 0 && n < 8; n++ {
@@ -440,8 +444,8 @@ func searchReplacementSpans(m files.Match, replacement string) []ui.Span {
 	}
 	return []ui.Span{
 		{Text: prefix},
-		{Text: snippetText(m.Text[start:end], 24), Color: codeTheme().Deleted, Background: codeTheme().Deleted.Alpha(.18), Strikethrough: true},
-		{Text: snippetText(replacement, 24), Color: codeTheme().Added, Background: codeTheme().Added.Alpha(.18)},
+		{Text: snippetText(m.Text[start:end], 24), Color: codeTheme(mode...).Deleted, Background: codeTheme(mode...).Deleted.Alpha(.18), Strikethrough: true},
+		{Text: snippetText(replacement, 24), Color: codeTheme(mode...).Added, Background: codeTheme(mode...).Added.Alpha(.18)},
 		{Text: snippetText(m.Text[end:], 60)},
 	}
 }
@@ -481,4 +485,23 @@ func fileCountLabel(count int) string {
 		return "1 file"
 	}
 	return fmt.Sprintf("%d files", count)
+}
+
+// English keeps its existing singular/plural phrasing; CJK languages use a
+// complete sentence so counters and word order are not assembled from English.
+func (a *App) localizedSearchCount(count, files int, noun string) string {
+	if a.settings.Language == "" || a.settings.Language == "en" {
+		return searchCountLabel(count, files, noun)
+	}
+	if noun == "replacement" {
+		return a.tr("%d replacements in %d files", count, files)
+	}
+	return a.tr("%d results in %d files", count, files)
+}
+
+func (a *App) localizedFileCount(count int) string {
+	if count == 1 {
+		return a.tr("1 file")
+	}
+	return a.tr("%d files", count)
 }

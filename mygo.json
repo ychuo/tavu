@@ -8,7 +8,7 @@
     "infoPlist": {
       "CFBundleDevelopmentRegion": "en",
       "CFBundleLocalizations": [
-        "en"
+        "en", "zh-Hans", "zh-Hant", "ja"
       ],
       "LSApplicationCategoryType": "public.app-category.developer-tools"
     }

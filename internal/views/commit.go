@@ -1,7 +1,6 @@
 package views
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -18,7 +17,7 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 	}
 	viewToken := a.status.Token
 	ui.Column(c.Key("commit-composer:" + a.root)).FillWidth().Gap(8).Children(func() {
-		input := ui.TextAreaBase(c, &a.commitMessage).Label("Commit Message").Placeholder("Message · ⌘Enter").FillWidth().Lines(2, 4).FontSize(13).Padding(9, 10).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6).ReadOnly(a.committing).Disabled(a.repo == nil || a.loading).OnTextKey(func(k ui.TextKey) bool {
+		input := ui.TextAreaBase(c, &a.commitMessage).Label(tr(c, "Commit Message")).Placeholder(tr(c, "Message · ⌘Enter")).FillWidth().Lines(2, 4).FontSize(13).Padding(9, 10).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6).ReadOnly(a.committing).Disabled(a.repo == nil || a.loading).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != ui.Cmd {
 				return false
 			}
@@ -30,7 +29,7 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 			return true
 		})
 		if input.Focused() {
-			input.BorderColor(accent.Alpha(.65))
+			input.BorderColor(palette(c).accent.Alpha(.65))
 		}
 		label := "Commit"
 		if a.committing {
@@ -40,9 +39,9 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 		// the previous visible scope while handling that click, rather than
 		// silently accepting status that arrived since the preceding frame.
 		clickToken := a.commitDisplayedToken
-		button := ui.ButtonBase(c).Label("Commit Staged Changes").FillWidth().Height(32).FontSize(13).Gap(7).Radius(6).AlignItems(ui.Center).Justify(ui.Center).Background(activeFill).TextColor(c.Theme().Text).Disabled(!a.canCommit()).OnClick(func() { a.submitDisplayedCommit(clickToken, submit) }).Children(func() {
+		button := ui.ButtonBase(c).Label(tr(c, "Commit Staged Changes")).FillWidth().Height(32).FontSize(13).Gap(7).Radius(6).AlignItems(ui.Center).Justify(ui.Center).Background(palette(c).activeFill).TextColor(c.Theme().Text).Disabled(!a.canCommit()).OnClick(func() { a.submitDisplayedCommit(clickToken, submit) }).Children(func() {
 			glyph(c, "check").FontSize(13)
-			ui.Text(c, label).FontSize(13)
+			ui.Text(c, tr(c, label)).FontSize(13)
 		})
 		if button.Hovered() && a.canCommit() {
 			button.Background(c.Theme().Accent.Alpha(.32))
@@ -55,20 +54,20 @@ func (a *App) commitComposerView(c *ui.Context, submit func()) {
 		if count == 1 {
 			scope = "1 staged file"
 		} else if count > 1 {
-			scope = fmt.Sprintf("%d staged files", count)
+			scope = tr(c, "%d staged files", count)
 		}
 		if a.hasCommitConflicts() {
 			scope = "Resolve conflicts to commit"
 		}
-		ui.Text(c, scope).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+		ui.Text(c, tr(c, scope)).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
 		if a.commitError != "" {
 			ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Commit failed").FontSize(12).TextColor(c.Theme().Danger).Grow(1)
+				ui.Text(c, tr(c, "Commit failed")).FontSize(12).TextColor(c.Theme().Danger).Grow(1)
 				label := "Details"
 				if a.commitErrorExpanded {
 					label = "Hide Details"
 				}
-				flatButton(c, label).Padding(3).OnClick(func() { a.commitErrorExpanded = !a.commitErrorExpanded }).Children(func() { ui.Text(c, label).FontSize(12) })
+				flatButton(c, label).Padding(3).OnClick(func() { a.commitErrorExpanded = !a.commitErrorExpanded }).Children(func() { ui.Text(c, tr(c, label)).FontSize(12) })
 			})
 			if a.commitErrorExpanded {
 				width := a.navigationWidth(c)
@@ -113,7 +112,7 @@ func (a *App) hasCommitConflicts() bool {
 }
 
 func (a *App) canCommit() bool {
-	return a.repo != nil && a.projectCtx != nil && !a.busy && !a.loading && !a.committing && a.status.Token != "" && a.stagedCount() > 0 && !a.hasCommitConflicts() && strings.TrimSpace(a.commitMessage) != ""
+	return a.repo != nil && a.projectCtx != nil && !a.busy && !a.fileBusy && !a.loading && !a.committing && a.status.Token != "" && a.stagedCount() > 0 && !a.hasCommitConflicts() && strings.TrimSpace(a.commitMessage) != ""
 }
 
 type commitSubmission struct {
@@ -146,7 +145,7 @@ func (a *App) finishCommit(request commitSubmission, status gitrepo.Status, err 
 		a.commitMessage = ""
 		delete(a.commitDrafts, a.root)
 	}
-	a.message = "Committed · " + short(status.HEAD)
+	a.message = a.tr("Committed · %s", short(status.HEAD))
 	a.refresh()
 }
 

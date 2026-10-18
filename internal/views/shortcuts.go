@@ -14,6 +14,8 @@ func (a *App) workspaceShortcuts(c *ui.Context) {
 	bind(ui.Cmd, ui.KeyO, a.chooseProject)
 	bind(ui.Cmd, ui.KeyP, a.openQuickOpen)
 	bind(ui.Cmd, ui.KeyW, a.closeActiveTab)
+	bind(ui.Cmd, ui.KeyS, a.saveCurrentFile)
+	bind(ui.Cmd|ui.Shift, ui.KeyS, a.saveAllFiles)
 	bind(ui.Cmd|ui.Shift, ui.KeyF, a.openSearch)
 	bind(ui.Cmd|ui.Shift, ui.KeyT, func() { a.newTerminal(false) })
 	bind(ui.Cmd|ui.Shift, ui.KeyR, a.refresh)
@@ -23,7 +25,7 @@ func (a *App) workspaceShortcuts(c *ui.Context) {
 }
 
 func (a *App) workspaceModalOpen() bool {
-	return a.settingsOpen || a.previewOpen || a.editingComment != "" || a.renameTerminalID != "" || a.quickOpen || a.confirmClose || a.confirmQuit || a.confirmProject || a.confirmClean || a.choosingProject
+	return a.reviewGuardOpen || a.fileModalOpen() || a.gitModalOpen() || a.settingsOpen || a.previewOpen || a.editingComment != "" || a.renameTerminalID != "" || a.quickOpen || a.confirmClose || a.confirmQuit || a.confirmProject || a.confirmClean || a.choosingProject
 }
 
 func (a *App) runWorkspaceAction(action func()) {
@@ -71,7 +73,7 @@ func (a *App) closeFocusedTab(terminals []sessions.Session, closeTerminal func(s
 	if pane == "terminal" && id != "" {
 		closeTerminal(id)
 	} else if pane == "reader" && id != "" {
-		a.closeDocument(id)
+		a.requestCloseDocument(id)
 	}
 }
 

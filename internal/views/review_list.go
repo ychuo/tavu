@@ -1,7 +1,6 @@
 package views
 
 import (
-	"fmt"
 	"path/filepath"
 
 	"github.com/egoist/mygo/ui"
@@ -62,12 +61,12 @@ func (a *App) reviewCommentList(c *ui.Context, comments []review.Comment) ui.Ele
 				Expanded(a.commentsResolvedOpen).TextColor(c.Theme().TextMuted).
 				Children(func() {
 					glyph(c, icon).FontSize(12)
-					ui.Text(c, fmt.Sprintf("Resolved · %d", resolved)).FontSize(12).SingleLine()
+					ui.Text(c, tr(c, "Resolved · %d", resolved)).FontSize(12).SingleLine()
 				}).OnClick(func() { a.commentsResolvedOpen = !a.commentsResolvedOpen })
 		default:
 			a.reviewCommentRow(c, rows[i].comment)
 		}
-	}).Label("Review Comments").Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Padding(0, reviewListGutter, 6, reviewListGutter).Gap(2)
+	}).Label(tr(c, "Review Comments")).Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Padding(0, reviewListGutter, 6, reviewListGutter).Gap(2)
 }
 
 func (a *App) reviewSelectionRow(c *ui.Context) {
@@ -78,10 +77,10 @@ func (a *App) reviewSelectionRow(c *ui.Context) {
 		}
 	}
 	ui.Row(c).Height(26).FillWidth().Padding(0, reviewRowPadding).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, fmt.Sprintf("%d selected", count)).FontSize(12).TextColor(c.Theme().TextMuted).
+		ui.Text(c, tr(c, "%d selected", count)).FontSize(12).TextColor(c.Theme().TextMuted).
 			Tooltip("Selected comments across all files").Grow(1).MinWidth(0).SingleLine()
-		flatButton(c, "Done Selecting Comments").Height(24).Padding(0, 6).TextColor(accent).
-			Children(func() { ui.Text(c, "Done").FontSize(12) }).OnClick(func() { a.commentsSelecting = false })
+		flatButton(c, "Done Selecting Comments").Height(24).Padding(0, 6).TextColor(palette(c).accent).
+			Children(func() { ui.Text(c, tr(c, "Done")).FontSize(12) }).OnClick(func() { a.commentsSelecting = false })
 	})
 }
 
@@ -94,7 +93,7 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 		exportFocus := false
 		if a.commentsSelecting && !cm.Resolved {
 			chosen := a.exportSelected[cm.ID]
-			export := ui.Checkbox(c, &chosen, "").Label("Export " + cm.ID).
+			export := ui.Checkbox(c, &chosen, "").Label(tr(c, "Export %s", cm.ID)).
 				Description("Include this comment in the copy preview").OnClick(func() {
 				a.exportSelected[cm.ID] = !a.exportSelected[cm.ID]
 			})
@@ -102,7 +101,7 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 		}
 		var location, expand ui.Element
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			text := ui.Text(c, cm.Body).Label("Comment Body " + cm.ID).FontSize(13).
+			text := ui.Text(c, cm.Body).Label(tr(c, "Comment Body %s", cm.ID)).FontSize(13).
 				FixedLineHeight(18).FillWidth().MinWidth(0)
 			if cm.Resolved {
 				text.TextColor(c.Theme().TextMuted)
@@ -134,18 +133,18 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 				}
 			})
 			ui.Row(c).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
-				location = flatButton(c, "View Comment History "+cm.ID).Height(16).Padding(0).
-					MinWidth(0).TextColor(c.Theme().TextMuted).Tooltip(commentLocation(cm) + " · Open saved context").
+				location = flatButton(c, tr(c, "View Comment History %s", cm.ID)).Height(16).Padding(0).
+					MinWidth(0).TextColor(c.Theme().TextMuted).Tooltip(a.localizedCommentLocation(cm) + " · " + tr(c, "Open saved context")).
 					Children(func() {
 						ui.Text(c, a.reviewCommentLocation(cm)).FontSize(12).FixedLineHeight(16).SingleLine().MinWidth(0)
 					}).OnClick(func() { a.showHistorical(cm) })
 				if long || expanded {
-					label, title := "Expand Comment "+cm.ID, "Show more"
+					label, title := tr(c, "Expand Comment %s", cm.ID), "Show more"
 					if expanded {
-						label, title = "Collapse Comment "+cm.ID, "Show less"
+						label, title = tr(c, "Collapse Comment %s", cm.ID), "Show less"
 					}
 					expand = flatButton(c, label).Height(16).Padding(0).TextColor(c.Theme().TextMuted).
-						Children(func() { ui.Text(c, title).FontSize(12).FixedLineHeight(16).SingleLine() }).
+						Children(func() { ui.Text(c, tr(c, title)).FontSize(12).FixedLineHeight(16).SingleLine() }).
 						OnClick(func() {
 							if a.expandedComments == nil {
 								a.expandedComments = map[string]bool{}
@@ -169,11 +168,11 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 				a.saveReview()
 				a.decorate(a.current())
 			})
-			more := toolButton(c, "more-horizontal", "Comment Actions "+cm.ID).Size(24, 24).Menu(func(m *ui.Menu) {
-				if m.Item("Edit").Chosen() {
+			more := toolButton(c, "more-horizontal", tr(c, "Comment Actions %s", cm.ID)).Size(24, 24).Menu(func(m *ui.Menu) {
+				if m.Item(a.tr("Edit")).Chosen() {
 					a.editingComment, a.commentEditDraft = cm.ID, cm.Body
 				}
-				if m.Item("Delete").Chosen() {
+				if m.Item(a.tr("Delete")).Chosen() {
 					a.fail(a.state.Review.DeleteComment(cm.ID))
 					a.saveReview()
 					a.decorate(a.current())
@@ -186,30 +185,37 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 		} else if row.Hovered() {
 			bar.Background(c.Theme().SurfaceHover)
 		} else {
-			bar.Background(panel)
+			bar.Background(palette(c).panel)
 		}
 	})
 }
 
 func (a *App) reviewCommentLocation(cm review.Comment) string {
-	location := "File comment"
+	location := a.tr("File comment")
 	if !cm.IsFileComment() {
-		location = fmt.Sprintf("Line %d", cm.StartLine)
+		location = a.tr("Line %d", cm.StartLine)
 		if cm.EndLine != cm.StartLine {
-			location = fmt.Sprintf("Lines %d–%d", cm.StartLine, cm.EndLine)
+			location = a.tr("Lines %d–%d", cm.StartLine, cm.EndLine)
 		}
 		if cm.Side == review.OldSide {
-			location += " · Original"
+			location += " · " + a.tr("Original")
 		}
 	}
 	if a.commentsAll {
 		location = filepath.Base(cm.Path) + " · " + location
 	}
 	if cm.Resolved {
-		location += " · Resolved"
+		location += " · " + a.tr("Resolved")
 	}
 	if fp := a.latest[workspace.Key(cm.Kind, cm.Path)]; fp != "" && fp != cm.Fingerprint {
-		location += " · Earlier version"
+		location += " · " + a.tr("Earlier version")
 	}
 	return location
+}
+
+func (a *App) localizedCommentLocation(cm review.Comment) string {
+	if cm.IsFileComment() {
+		return cm.Path + " · " + a.tr("File")
+	}
+	return commentLocation(cm)
 }

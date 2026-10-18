@@ -37,17 +37,17 @@ func TestReaderTabsRevealSelectionWithoutStealingManualScroll(t *testing.T) {
 	a.addDocument(last)
 	a.commentDraft = "Retain this unfinished review"
 	tt.Frame()
-	requireCompleteTab(t, tt, last.Label, "Close File "+last.Label, 576)
+	requireCompleteTab(t, tt, a.documentTabLabel(last), "Close File "+a.documentTabLabel(last), 576)
 
 	// Horizontal scrolling can intentionally move the selected tab offscreen.
 	tt.Scroll(280, 18, -2000, 0)
 	first := a.documents[0]
-	before := searchControl(t, tt, "Close File "+first.Label)
-	if close, ok := tt.Find("Close File " + last.Label); ok && close.X+close.W <= 576 {
+	before := searchControl(t, tt, "Close File "+a.documentTabLabel(first))
+	if close, ok := tt.Find("Close File " + a.documentTabLabel(last)); ok && close.X+close.W <= 576 {
 		t.Fatal("manual scroll was pulled back to the selected tab")
 	}
 	tt.Frame()
-	if after := searchControl(t, tt, "Close File "+first.Label); before != after {
+	if after := searchControl(t, tt, "Close File "+a.documentTabLabel(first)); before != after {
 		t.Fatalf("idle frame moved a manually scrolled tab bar: before=%+v after=%+v", before, after)
 	}
 	if a.current() != last || a.current().Code != last.Code || a.commentDraft != "Retain this unfinished review" {
@@ -58,16 +58,16 @@ func TestReaderTabsRevealSelectionWithoutStealingManualScroll(t *testing.T) {
 	// different selection and the fallback selection after closing a tab.
 	a.selectDocument(last.ID)
 	tt.Frame()
-	requireCompleteTab(t, tt, last.Label, "Close File "+last.Label, 576)
+	requireCompleteTab(t, tt, a.documentTabLabel(last), "Close File "+a.documentTabLabel(last), 576)
 	a.selectDocument(first.ID)
 	tt.Frame()
-	requireCompleteTab(t, tt, first.Label, "Close File "+first.Label, 576)
+	requireCompleteTab(t, tt, a.documentTabLabel(first), "Close File "+a.documentTabLabel(first), 576)
 	a.selectDocument(last.ID)
 	tt.Frame()
 	a.closeDocument(last.ID)
 	tt.Frame()
 	current := a.current()
-	requireCompleteTab(t, tt, current.Label, "Close File "+current.Label, 576)
+	requireCompleteTab(t, tt, a.documentTabLabel(current), "Close File "+a.documentTabLabel(current), 576)
 }
 
 func TestReaderTabsRevealOnWidthChange(t *testing.T) {
@@ -82,9 +82,9 @@ func TestReaderTabsRevealOnWidthChange(t *testing.T) {
 	}, 1000, 500)
 	current, code := a.current(), a.current().Code
 	tt.SetSize(440, 500)
-	requireCompleteTab(t, tt, current.Label, "Close File "+current.Label, 440)
+	requireCompleteTab(t, tt, a.documentTabLabel(current), "Close File "+a.documentTabLabel(current), 440)
 	tt.SetSize(800, 500)
-	requireCompleteTab(t, tt, current.Label, "Close File "+current.Label, 800)
+	requireCompleteTab(t, tt, a.documentTabLabel(current), "Close File "+a.documentTabLabel(current), 800)
 	if a.current() != current || a.current().Code != code {
 		t.Fatal("resizing the tab bar recreated the selected editor")
 	}

@@ -2,6 +2,14 @@
 
 Date: 2026-10-18 (Asia/Shanghai). Host: macOS 26.5, arm64; Git 2.50.1 (Apple Git-155). All Git write tests used temporary repositories. Tests did not stage, commit, or push the user's working directory.
 
+## Review alignment follow-up
+
+The Review heading group, comment body, and composer now share the reader toolbar's 12-DIP side insets. The initial 20-DIP alignment made Review look too inset compared with the surrounding reader, so it now uses the same constant as the file toolbar. Comment backgrounds extend outward with 4-DIP list gutters and retain 8-DIP inner padding. The reader/Review header controls, comment menu, and send button share a right edge. The native scrollbar overlays the background's outer padding; its 12-DIP hit region remains outside the text and actions.
+
+- Full `./scripts/check.sh`, focused Review tests, and `git diff --check` passed. Packaging, strict ad-hoc signature verification, and terminal-library diagnostics passed (`libraryLoaded: true`). After explicit permission to end the active terminal, Tavu exited normally and restarted from the updated bundle. The previous `design-qa.md` comparison and Review section were reopened, and the user accepted the resulting layout.
+- Native [1620 × 971](screenshots/ink-review-alignment.png) and [760 × 560](screenshots/ink-review-alignment-compact.png) fixtures were visually inspected. They use isolated real PTYs and test comments, not the user's application or saved data. The actual heading/body/scope left edges and header/menu/send right edges match at both widths.
+- Pointer checks with 30 comments confirmed the menu's rightmost pixel remains clickable, the scrollbar drags independently, hover preserves text width, and the layout does not continuously request redraws. The existing scrollbar regression also covers 200/201/400-DIP widths with the updated container inset.
+
 ## Review list spacing follow-up
 
 The user's screenshot showed comment text touching its hover background and the scrollbar covering the menu icon. Review rows had zero horizontal padding, and their right-aligned action overlay intersected MyGo's 12-DIP scrollbar hit region. The list now spans the reader panel with symmetric 16-DIP gutters, 8-DIP row padding and action insets, and 6-DIP bottom content padding. Header, composer, other panels, and behavior are unchanged.

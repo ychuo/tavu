@@ -42,7 +42,7 @@ func TestReviewCommentExpansionUpdatesAfterResizeWithoutExtraInput(t *testing.T)
 }
 
 func TestReviewCommentActionsStayClickableBesideScrollbar(t *testing.T) {
-	for _, width := range []int{200, 400} {
+	for _, width := range []int{200, 201, 400} {
 		t.Run(fmt.Sprintf("width-%d", width), func(t *testing.T) {
 			a := testApp()
 			a.commentDraft = "Keep this unsent comment"
@@ -56,8 +56,8 @@ func TestReviewCommentActionsStayClickableBesideScrollbar(t *testing.T) {
 				c.SetTheme(appTheme())
 				// Match Review's padded container and the list's reclaimed
 				// horizontal space, using the actual production rows and menu.
-				ui.Column(c).Fill().Padding(0, 12).Children(func() {
-					a.reviewCommentList(c, a.state.Review.Comments).Margin(0, -12)
+				ui.Column(c).Fill().Padding(0, reviewContentInset).Children(func() {
+					a.reviewCommentList(c, a.state.Review.Comments).Margin(0, -reviewContentInset)
 				})
 			}, width, 200)
 			list, ok := tt.Find("Review Comments")

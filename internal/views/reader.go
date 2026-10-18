@@ -9,6 +9,8 @@ import (
 	"tavu/internal/review"
 )
 
+const readerContentInset float32 = 12
+
 func (a *App) reader(c *ui.Context) {
 	pane := ui.Column(c.Key("reader-pane")).Fill().MinWidth(0).MinHeight(0).Background(panel).Radius(9).Clip()
 	a.trackPaneFocus(pane, "reader", "")
@@ -52,7 +54,7 @@ func (a *App) reader(c *ui.Context) {
 			})
 			return
 		}
-		ui.Row(c).Height(34).Shrink(0).Padding(0, 12).Gap(4).FillWidth().AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(34).Shrink(0).Padding(0, readerContentInset).Gap(4).FillWidth().AlignItems(ui.Center).Children(func() {
 			breadcrumb := strings.ReplaceAll(filepath.ToSlash(d.Path), "/", " / ")
 			ui.Text(c, breadcrumb).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine().Grow(1).MinWidth(0).Tooltip(d.Path + " · " + d.Notice)
 			version := ""
@@ -211,9 +213,9 @@ func (a *App) commentsView(c *ui.Context) {
 		}
 		height = reviewPanelHeight(a.readerHeight(c), visible)
 	}
-	ui.Column(c.Key("comments")).Height(height).Shrink(0).FillWidth().Padding(6, 12, 10, 12).Gap(6).Background(panel).Children(func() {
+	ui.Column(c.Key("comments")).Height(height).Shrink(0).FillWidth().Padding(6, reviewContentInset, 10, reviewContentInset).Gap(6).Background(panel).Children(func() {
 		ui.Row(c.Key("review-header")).Height(28).Shrink(0).Gap(4).FillWidth().AlignItems(ui.Center).Children(func() {
-			flatButton(c, "Toggle Review").Height(28).Padding(0, 4).Gap(8).MinWidth(0).Expanded(a.commentsOpen).Children(func() {
+			flatButton(c, "Toggle Review").Height(28).Padding(0).Gap(8).MinWidth(0).Expanded(a.commentsOpen).Children(func() {
 				glyph(c, "message-square").FontSize(15).TextColor(c.Theme().Text)
 				ui.Text(c, fmt.Sprintf("Review · %d", len(comments))).FontSize(14).Bold().SingleLine()
 			}).OnClick(a.toggleComments)
@@ -261,11 +263,11 @@ func (a *App) commentsView(c *ui.Context) {
 			return
 		}
 		if len(comments) == 0 && !a.commentsSelecting {
-			ui.Text(c, "No comments").FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinHeight(0).Padding(4, 4)
+			ui.Text(c, "No comments").FontSize(12).TextColor(c.Theme().TextMuted).Grow(1).MinHeight(0).Padding(4, 0)
 		} else {
-			// Let the scroll container span the panel; its own symmetric gutters
-			// separate comment backgrounds from the scrollbar without double insets.
-			a.reviewCommentList(c, comments).Margin(0, -12)
+			// Span the panel so the scrollbar stays at its outer edge instead of
+			// shifting over actions aligned with the reader's content inset.
+			a.reviewCommentList(c, comments).Margin(0, -reviewContentInset)
 		}
 		if d := a.current(); d != nil && d.Comparison != nil {
 			a.commentComposer(c, d)

@@ -14,6 +14,12 @@ type reviewListItem struct {
 	comment review.Comment
 }
 
+const (
+	reviewContentInset         = readerContentInset
+	reviewRowPadding   float32 = 8
+	reviewListGutter           = reviewContentInset - reviewRowPadding
+)
+
 func (a *App) reviewCommentList(c *ui.Context, comments []review.Comment) ui.Element {
 	rows := make([]reviewListItem, 0, len(comments)+2)
 	if a.commentsSelecting {
@@ -41,7 +47,8 @@ func (a *App) reviewCommentList(c *ui.Context, comments []review.Comment) ui.Ele
 	// a comment changes groups, or a selection toolbar is inserted above it.
 	a.commentList.Key = func(i int) any { return [2]string{rows[i].kind, rows[i].comment.ID} }
 	// The scrollbar's 12-DIP hit region overlays the container's right edge.
-	// Equal 16-DIP gutters keep row backgrounds and actions clear of that track.
+	// Match the reader toolbar's content inset. The native overlay scrollbar
+	// can cross the background's outer padding, but never text or actions.
 	return ui.List(c.Key("review-comments"), &a.commentList, len(rows), func(i int) {
 		switch rows[i].kind {
 		case "selection":
@@ -51,7 +58,7 @@ func (a *App) reviewCommentList(c *ui.Context, comments []review.Comment) ui.Ele
 			if a.commentsResolvedOpen {
 				icon = "chevron-down"
 			}
-			flatButton(c, "Resolved Comments").Height(28).FillWidth().Padding(0, 8).Gap(6).Justify(ui.Start).
+			flatButton(c, "Resolved Comments").Height(28).FillWidth().Padding(0, reviewRowPadding).Gap(6).Justify(ui.Start).
 				Expanded(a.commentsResolvedOpen).TextColor(c.Theme().TextMuted).
 				Children(func() {
 					glyph(c, icon).FontSize(12)
@@ -60,7 +67,7 @@ func (a *App) reviewCommentList(c *ui.Context, comments []review.Comment) ui.Ele
 		default:
 			a.reviewCommentRow(c, rows[i].comment)
 		}
-	}).Label("Review Comments").Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Padding(0, 16, 6, 16).Gap(2)
+	}).Label("Review Comments").Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Padding(0, reviewListGutter, 6, reviewListGutter).Gap(2)
 }
 
 func (a *App) reviewSelectionRow(c *ui.Context) {
@@ -70,7 +77,7 @@ func (a *App) reviewSelectionRow(c *ui.Context) {
 			count++
 		}
 	}
-	ui.Row(c).Height(26).FillWidth().Padding(0, 8).Gap(6).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Height(26).FillWidth().Padding(0, reviewRowPadding).Gap(6).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, fmt.Sprintf("%d selected", count)).FontSize(12).TextColor(c.Theme().TextMuted).
 			Tooltip("Selected comments across all files").Grow(1).MinWidth(0).SingleLine()
 		flatButton(c, "Done Selecting Comments").Height(24).Padding(0, 6).TextColor(accent).
@@ -79,7 +86,7 @@ func (a *App) reviewSelectionRow(c *ui.Context) {
 }
 
 func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
-	row := ui.Row(c.Key(cm.ID)).FillWidth().MinWidth(0).Gap(8).Padding(6, 8).AlignItems(ui.Start).Radius(4)
+	row := ui.Row(c.Key(cm.ID)).FillWidth().MinWidth(0).Gap(8).Padding(6, reviewRowPadding).AlignItems(ui.Start).Radius(4)
 	if row.Hovered() {
 		row.Background(c.Theme().SurfaceHover)
 	}
@@ -108,7 +115,7 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 			// frame uses the reader's available width; no bytes are shortened.
 			width := text.LayoutBounds().W
 			if width <= 0 {
-				width = max(float32(80), a.readerWidth(c)-48)
+				width = max(float32(80), a.readerWidth(c)-2*reviewContentInset)
 				if a.commentsSelecting && !cm.Resolved {
 					width -= 24
 				}
@@ -150,7 +157,7 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 		})
 		// Overlay controls leave the full width to the text at rest. They are
 		// siblings of the location link, so resolving never opens a history tab.
-		bar := ui.Row(c).Absolute().Right(8).Top(3).Height(24).Gap(2).Padding(0, 0, 0, 4).AlignItems(ui.Center).Radius(3)
+		bar := ui.Row(c).Absolute().Right(reviewRowPadding).Top(3).Height(24).Gap(2).Padding(0, 0, 0, 4).AlignItems(ui.Center).Radius(3)
 		visible := row.Hovered() || exportFocus || location.FocusVisible() || expand.FocusVisible()
 		bar.Children(func() {
 			label, icon := "Resolve", "check"

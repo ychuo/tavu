@@ -23,7 +23,7 @@ var (
 	ErrNotRepository = errors.New("This folder is not in a Git worktree")
 	ErrStale         = errors.New("Git status changed; refresh and try again")
 	ErrUnstable      = errors.New("Files changed during capture; try again")
-	ErrConflict      = errors.New("Merge conflicts found; resolve them externally and refresh")
+	ErrConflict      = errors.New("Merge conflicts found; resolve them before continuing")
 	ErrTooLarge      = errors.New("File exceeds the preview size limit")
 	ErrOutputLimit   = errors.New("Git output exceeds the size limit")
 	ErrNoChanges     = errors.New("No staged changes to commit")

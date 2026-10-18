@@ -56,6 +56,13 @@ func (r *Repository) run(ctx context.Context, write bool, stdin io.Reader, limit
 	budget := &outputBudget{remaining: limit, cancel: cancel}
 	stdout, stderr := &boundedOutput{budget: budget}, &boundedOutput{budget: budget}
 	argv := []string{"--literal-pathspecs", "-c", "color.ui=false", "-C", r.Root}
+	// Stash internally calls clean with Git-generated pathspecs. Inheriting
+	// --literal-pathspecs prevents its untracked cleanup (while reporting success).
+	// Our stash operations accept no path arguments; all other commands retain
+	// literal pathspec handling for user-controlled filenames.
+	if len(args) > 0 && args[0] == "stash" {
+		argv = argv[1:]
+	}
 	argv = append(argv, args...)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	// An inherited GIT_DIR or alternate index must not redirect operations away
@@ -63,7 +70,7 @@ func (r *Repository) run(ctx context.Context, write bool, stdin io.Reader, limit
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch key {
-		case "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX", "GIT_TERMINAL_PROMPT", "GIT_PAGER", "GIT_OPTIONAL_LOCKS":
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX", "GIT_TERMINAL_PROMPT", "GIT_PAGER", "GIT_OPTIONAL_LOCKS", "GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS":
 			continue
 		}
 		cmd.Env = append(cmd.Env, entry)

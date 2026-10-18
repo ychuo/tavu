@@ -37,6 +37,8 @@ type Layout struct {
 }
 
 type Settings struct {
+	Theme            string   `json:"theme"`
+	Language         string   `json:"language"`
 	RecentProjects   []string `json:"recentProjects"`
 	LastProject      string   `json:"lastProject"`
 	Shell            string   `json:"shell"`
@@ -48,10 +50,18 @@ type Settings struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{FontSize: 12, Layout: Layout{Mode: "split", SidebarVisible: true, SidebarWidth: 280, TerminalRatio: .48, StackedReaderRatio: .66, Arrangement: "auto"}, MaxSnapshotBytes: DefaultMaxSnapshotBytes, MaxSnapshots: DefaultMaxSnapshots}
+	return Settings{Theme: "dark", Language: "en", FontSize: 12, Layout: Layout{Mode: "split", SidebarVisible: true, SidebarWidth: 280, TerminalRatio: .48, StackedReaderRatio: .66, Arrangement: "auto"}, MaxSnapshotBytes: DefaultMaxSnapshotBytes, MaxSnapshots: DefaultMaxSnapshots}
 }
 
 func (s *Settings) normalize() {
+	if s.Theme != "light" && s.Theme != "system" {
+		s.Theme = "dark"
+	}
+	switch s.Language {
+	case "en", "zh-Hans", "zh-Hant", "ja":
+	default:
+		s.Language = "en"
+	}
 	if s.FontSize < 8 || s.FontSize > 32 {
 		s.FontSize = 12
 	}

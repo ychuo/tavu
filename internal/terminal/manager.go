@@ -23,6 +23,7 @@ type Config struct {
 	Shell      string // executable path/name only; never a shell expression
 	FontSize   float32
 	FontFamily string
+	Theme      string       // "dark" (default), "light", or "system"
 	Dispatch   func(func()) // schedules a callback on MyGo's UI thread
 	OnChange   func()
 	OnLink     func(LinkTarget)
@@ -96,11 +97,12 @@ func (m *Manager) NewSession() (Session, error) {
 		return Session{}, err
 	}
 	id := hex.EncodeToString(idBytes[:])
+	lightTheme, darkTheme := themePair(m.config.Theme)
 	term, err := mygoterm.New(mygoterm.Options{
 		Command: command, Dir: dir, Scrollback: ScrollbackBytes,
 		Env:   []string{"TERM_PROGRAM=Tavu"},
 		Font:  mygoterm.Font{Family: terminalFontFamily(m.config.FontFamily), Size: m.config.FontSize},
-		Theme: forestTheme(), DarkTheme: forestTheme(),
+		Theme: lightTheme, DarkTheme: darkTheme,
 		ClipboardRead: mygoterm.ClipboardDeny, NoClipboardWrite: true,
 		OnExit: func(code int) {
 			m.mu.Lock()
@@ -266,4 +268,24 @@ func (m *Manager) SetShell(shell string) {
 	m.mu.Lock()
 	m.config.Shell = shell
 	m.mu.Unlock()
+}
+
+// SetTheme changes existing and future terminals while retaining sessions,
+// process state and scrollback. System follows the mounted UI appearance;
+// explicit preferences stay fixed when the operating system's theme changes.
+func (m *Manager) SetTheme(mode string) {
+	if mode != "light" && mode != "system" {
+		mode = "dark"
+	}
+	m.mu.Lock()
+	m.config.Theme = mode
+	sessions := append([]Session(nil), m.sessions...)
+	m.mu.Unlock()
+	for _, session := range sessions {
+		if session.Term != nil {
+			light, dark := themePair(mode)
+			session.Term.SetTheme(light, dark)
+		}
+	}
+	m.notify()
 }

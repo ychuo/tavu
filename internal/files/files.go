@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -183,6 +184,19 @@ func (s *Service) List(ctx context.Context, relative string) ([]Entry, error) {
 		}
 		result = append(result, entry)
 	}
+	// Sort after resolving safe links so linked folders follow the same
+	// directory-first ordering as ordinary folders at every tree level.
+	sort.Slice(result, func(i, j int) bool {
+		left, right := result[i], result[j]
+		if left.Dir != right.Dir {
+			return left.Dir
+		}
+		leftName, rightName := strings.ToLower(left.Name), strings.ToLower(right.Name)
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return left.Name < right.Name
+	})
 	return result, nil
 }
 

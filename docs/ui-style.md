@@ -6,7 +6,7 @@ Localization covers product labels, help text, application errors, menus, and di
 
 ## Implementation and scope
 
-Tavu uses official MyGo v0.5.5 with a narrow build-time correction for diff-overlay wheel handling. Native menu materials and window chrome remain under AppKit control. Third-party license notices are recorded in [Third-party notices](../THIRD_PARTY_NOTICES.md).
+Tavu uses official MyGo v0.5.5 with verified build-time patches for diff-overlay wheel handling and native trackpad pinch events. Native menu materials and window chrome remain under AppKit control. Third-party license notices are recorded in [Third-party notices](../THIRD_PARTY_NOTICES.md).
 
 Source Control separates **Changes**, which compares working files with the index, from **Staged Changes**, which shows the content selected for the next commit.
 

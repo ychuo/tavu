@@ -20,7 +20,7 @@ Tavu is a native macOS workspace for running your tools, editing files, and revi
 
 - **Projects:** switch between folders while keeping each project's files, drafts, layout, and terminals open.
 - **Terminal:** real shells, tabs, split panes, and adjustable fonts, powered by libghostty-vt.
-- **Files:** edit and organize files, open them by name, and search with replacement previews.
+- **Files:** edit and organize files, preview Markdown and images, and search with replacement previews.
 - **Git:** stage files or hunks, commit, manage branches and stashes, inspect history, and fetch, pull, or push.
 - **Review:** browse changes continuously or file by file, leave versioned comments, and paste or drag feedback into a terminal.
 - **Appearance:** light, dark, or system themes; English, 简体中文, 繁體中文, and 日本語.
@@ -49,11 +49,11 @@ Start with **Open Folder**, **Open Terminal**, or **Open File**. Builds are loca
 ./scripts/check.sh             # Check, test, and build
 ```
 
-Use the project scripts to include the native diff-scroll fix. See [development notes](docs/development.md) for packaging and diagnostics.
+Use the project scripts to include native diff scrolling and trackpad pinch support. See [development notes](docs/development.md) for packaging and diagnostics.
 
 ## Documentation
 
 - [Usage and shortcuts](docs/usage.md)
-- [v0.1.1 limitations](docs/limitations.md)
+- [Known limitations](docs/limitations.md)
 - [UI style](docs/ui-style.md) · [Verification](docs/verification.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

@@ -18,7 +18,7 @@
 
 `check.sh` checks formatting, runs vet, native and CGO-disabled unit tests, MyGo checks, and builds `build/tavu`. Tests use temporary Git repositories.
 
-Use `scripts/go.sh` for Go commands. It prepares an isolated copy of pinned MyGo under ignored `build/mygo-patch/`, verifies upstream source hashes, and applies the diff-overlay wheel correction through a generated module file. Bare Go commands bypass this fix. The shared module cache and project module files remain unchanged. See [the adapter notes](../tools/mygopatch/README.md).
+Use `scripts/go.sh` for Go commands. It prepares an isolated copy of pinned MyGo under ignored `build/mygo-patch/`, verifies upstream source hashes, and applies the diff-overlay wheel correction and native trackpad pinch support through a generated module file. Bare Go commands omit required input APIs. The shared module cache and project module files remain unchanged. See [the adapter notes](../tools/mygopatch/README.md).
 
 Scripts set `-buildvcs=false` and use a dedicated temporary build cache. Set `TAVU_GOCACHE` to choose a different cache.
 

@@ -110,6 +110,7 @@ func (a *App) startStandaloneSaveAs(id, destination string, publish func(func())
 			// Rebind only the successfully saved document. Its live editor and
 			// undo history survive, including edits made while I/O was pending.
 			d.fileService, d.fileServicePath = service, path
+			d.markdown = nil
 			d.Path, d.Label = absolute, filepath.Base(absolute)
 			d.ID = "disk:" + absolute + ":" + saved.Hash
 			if a.selectedDoc == request.id {

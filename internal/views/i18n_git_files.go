@@ -2,6 +2,17 @@ package views
 
 // Source strings are stable keys; values are Simplified Chinese, Traditional Chinese, and Japanese.
 var gitFileTranslations = map[string][3]string{
+	"Show Source":                           {"查看源码", "檢視原始碼", "ソースを表示"},
+	"Preview Markdown":                      {"预览 Markdown", "預覽 Markdown", "Markdown をプレビュー"},
+	"Markdown Preview":                      {"Markdown 预览", "Markdown 預覽", "Markdown プレビュー"},
+	"Preview Image":                         {"预览图片", "預覽圖片", "画像をプレビュー"},
+	"Image Preview":                         {"图片预览", "圖片預覽", "画像プレビュー"},
+	"Could not preview image: %s":           {"无法预览图片：%s", "無法預覽圖片：%s", "画像をプレビューできません：%s"},
+	"Fit Image":                             {"适应窗口", "適應視窗", "ウィンドウに合わせる"},
+	"Fit":                                   {"适应", "適應", "フィット"},
+	"Actual Size":                           {"实际大小", "實際大小", "実際のサイズ"},
+	"Zoom In":                               {"放大", "放大", "拡大"},
+	"Zoom Out":                              {"缩小", "縮小", "縮小"},
 	"Toggle Git Graph":                      {"展开或折叠 Git 图表", "展開或收合 Git 圖表", "Git グラフを開閉"},
 	"Graph":                                 {"图表", "圖表", "グラフ"},
 	"Loading…":                              {"正在加载…", "正在載入…", "読み込み中…"},

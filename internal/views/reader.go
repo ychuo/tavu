@@ -83,6 +83,7 @@ func (a *App) reader(c *ui.Context) {
 				toolToggle(c, "rows-2", "Inline", a.diffLayout == 1).OnClick(func() { a.diffLayout = 1 })
 			}
 			a.fileToolbar(c, d)
+			a.filePreviewToolbar(c, d)
 			if d.Comparison != nil && !d.Replacement {
 				toolButton(c, "message-square-plus", "Add Comment").OnClick(a.beginComment)
 			}
@@ -133,6 +134,9 @@ func (a *App) reader(c *ui.Context) {
 		})
 		a.gitConflictToolbar(c, d)
 		a.fileConflictComparisonToolbar(c, d)
+		if d.imageError != "" {
+			ui.Text(c, tr(c, "Could not preview image: %s", d.imageError)).FontSize(12).TextColor(c.Theme().Warning).Padding(6, readerContentInset).FillWidth()
+		}
 		if d.VersionNotice != "" {
 			ui.Row(c).FillWidth().Padding(5, 10).Gap(8).AlignItems(ui.Center).Background(palette(c).chrome).Children(func() {
 				ui.Text(c, d.displayVersionNotice(c.Locale())).FontSize(12).SingleLine().Grow(1).MinWidth(0).TextColor(c.Theme().TextMuted)
@@ -157,6 +161,10 @@ func (a *App) reader(c *ui.Context) {
 					e.Focus()
 					a.readerFocus = false
 				}
+			} else if d.isMarkdown() && d.renderPreview {
+				a.markdownPreview(c, d)
+			} else if d.image != nil && (d.renderPreview || d.Code == nil) {
+				a.imagePreview(c, d)
 			} else if d.Code != nil {
 				d.Code.Theme = codeTheme(themeMode(c))
 				e := editor.View(c.Key(d.ID), d.Code).Fill()

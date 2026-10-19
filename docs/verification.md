@@ -2,6 +2,22 @@
 
 Date: 2026-10-19 (Asia/Shanghai). Host: macOS 26.5, arm64; Git 2.50.1 (Apple Git-155). All Git write tests used temporary repositories. Tests did not stage, commit, or push the user's working directory. This is a record of development checks; historical sections apply only to the builds they describe and do not validate the current release. Superseded visual experiments and restoration narratives are omitted.
 
+## v0.1.2 Markdown and image previews
+
+- Reproduced both reported failures with native UI tests: Markdown had no preview action, and opening a PNG from a project or Home returned the text reader's binary-file error. Both regression tests now pass on `codex/file-previews`.
+- `./scripts/check.sh` passed, including formatting, vet, ordinary and CGO-disabled tests, MyGo checks, and build. Focused race tests for preview reads, Markdown, images, standalone Markdown, and SVG passed. `./scripts/package.sh` passed strict ad-hoc signature verification and reported `libraryLoaded: true`.
+- Automated coverage checks source/preview switching without replacing unsaved buffers or undo history, local Markdown images, source navigation from search, project and standalone image opening, zoom, rename/reload, malformed SVG recovery, and stale SVG previews after edits or discard. File tests cover supported formats, bounded reads and decoded dimensions, corrupt input, cancellation, and root/Git-metadata confinement.
+- Restarted the rebuilt macOS app with the user's permission. In the actual window, README Markdown displayed headings, lists, code blocks, and its local screenshot. Opening `docs/screenshots/home.png` displayed the image and format/dimension/size metadata; Fit, 100%, Zoom Out, and Zoom In worked. The test terminal was closed normally afterward. Other formats and standalone entry paths were covered by automated tests rather than repeated desktop checks.
+- The native Markdown renderer does not fully render embedded HTML or mixed inline/linked images; remote images are not fetched. These limitations are documented in [limitations.md](limitations.md). This is an unpublished development build, not a replacement of the v0.1.1 release asset.
+
+### Image pinch and Fit icon follow-up
+
+- The verified build-only MyGo patch now forwards macOS `magnifyWithEvent:` independently of wheel scrolling. Pinch changes the image scale around the pointer; ordinary scrolling still pans. Fit is a corner-frame icon with a tooltip and active state, and resets both zoom and pan.
+- `./scripts/check.sh` and focused race tests for image/SVG previews and the input patch passed. Headless tests send magnification through the platform event dispatcher and verify Fit-to-zoom anchoring, panning followed by pinch, no zoom over the toolbar, Fit reset/resize, SVG limits, and invalid/zero scale deltas. A framework scroll regression run also passed.
+- Packaging and strict ad-hoc signature verification passed. After unlocking, restarted the new bundle and opened `docs/screenshots/home.png`; the Fit icon and active state rendered correctly, Zoom In changed the scale, and Fit restored the centered image. Closed the automatically created test terminal and left the image preview open. The user subsequently verified the new build and reported no issues, including the gesture interaction; computer-use tools cannot generate a native pinch.
+- Pre-PR review added regressions for SVG extension changes and explicit line navigation. Renaming an edited SVG to text or Markdown returns to its retained source/undo history; terminal line links show source on first open, while Quick Open retains image preview. Both review findings were fixed before submission.
+- Final v0.1.2 preparation passed `./scripts/check.sh`, the complete race suite with `TAVU_TEST_TERMINAL=1` and the bundled terminal library, and `./scripts/package.sh`. Diagnostics and both bundle version fields report 0.1.2; strict ad-hoc signature verification and native library loading passed.
+
 ## Review handoff and direct file operations
 
 Implemented on `codex/ux-review-file-workflows` after the desktop audit. The close-dialog regression first failed with `default Enter discarded the draft or closed its document`; Save now receives the initial focus. A separate native UI test checks Escape followed by typing, ensuring the retained editor receives input.

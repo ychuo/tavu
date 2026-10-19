@@ -273,7 +273,7 @@ func (a *App) searchView(c *ui.Context) {
 						a.runSearch(input.Submitted())
 					}
 					toolToggle(c, "columns-2", "Open Files Only", a.searchOpenFiles).Size(24, 24).
-						Description("Search disk versions of open files").OnClick(func() { a.searchOpenFiles = !a.searchOpenFiles; a.runSearch(true) })
+						Description(tr(c, "Search disk versions of open files")).OnClick(func() { a.searchOpenFiles = !a.searchOpenFiles; a.runSearch(true) })
 				})
 				ui.Text(c, tr(c, "Files to exclude")).FontSize(12)
 				searchField(c.Key("exclude-input-row")).Children(func() {
@@ -350,7 +350,7 @@ func (a *App) allSearchResultsCollapsed() bool {
 func (a *App) searchScopeLabel() string {
 	var labels []string
 	if a.searchOpenFiles {
-		labels = append(labels, a.tr("Open files only"))
+		labels = append(labels, a.tr("Open files · Disk contents"))
 	}
 	if a.searchInclude != "" {
 		labels = append(labels, a.tr("Files: %s", a.searchInclude))

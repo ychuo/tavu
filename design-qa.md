@@ -1,8 +1,18 @@
 # Tavu design QA
 
-Date: 2026-10-19. Current implementation: **Ink workbench**, extended with a quiet no-project home, project tabs, and the approved monkey-head identity. Functional and visual evidence are recorded in [verification](docs/verification.md); results for earlier builds do not validate later changes.
+Date: 2026-10-19. Current implementation: **Ink workbench**, extended with the approved two-column home, standalone file/terminal entry points, project tabs, and monkey-head identity. Functional and visual evidence are recorded in [verification](docs/verification.md); results for earlier builds do not validate later changes.
 
-## Home, project tabs, and mascot
+## Two-column home
+
+The native home now follows the approved browser prototype: a left-aligned mascot/name/slogan group and three vertical launcher rows, alongside pinned/recent projects. The columns share a vertical center and the whole composition is horizontally centered. Hover surfaces extend 10 DIP past the fixed content edges; buttons remain quiet at rest. Only the right project list scrolls when it overflows; the left launcher and search field remain fixed. Short lists have no extra scrollbar. Below 960 DIP the columns stack and scroll; empty history centers only the launcher. The README slogan remains exactly “Terminal, files, and changes, close at hand.”
+
+Native widget captures: [dark](docs/screenshots/home-two-column-dark.png), [light](docs/screenshots/home-two-column-light.png), [small window](docs/screenshots/home-two-column-small.png), and [empty history](docs/screenshots/home-two-column-empty.png). These are real MyGo renders with isolated fixture projects. Layout bounds, no-shift hover, keyboard menus, filtering, empty results, and localized long paths passed at 1324 × 888 and 760 × 560.
+
+Open Terminal starts at `~` without scanning it; Open File opens an editable standalone document. Project switching and Home preserve those buffers and PTYs. Native desktop checks passed for terminal creation, file opening/editing/saving/Save As, retained sessions, filtering, pin/unpin, remove/undo, and returning to Home. Full checks, targeted real-PTY race tests, and macOS packaging passed. See the [verification details](docs/verification.md#two-column-home-and-standalone-workspace).
+
+## Original home, project tabs, and mascot
+
+The following captures describe the earlier home; its layout is superseded above.
 
 Plain launch keeps the workspace empty until a folder is selected. The home uses one existing-style panel, a 144-DIP mascot canvas, a short welcome line, Open Folder, and up to five recent-project rows with muted paths. Below 640 DIP of window height, the canvas becomes 112 DIP and the recent list shows at most three projects. A directory can also be dropped onto the panel. Inactive Explorer, Search, Git, and pane-layout controls are omitted; Settings remains at the upper right. An open project with no reader or terminal tabs retains its separate workspace empty state.
 
@@ -10,7 +20,7 @@ Open projects occupy one left-aligned title-bar tab row after the sidebar toggle
 
 The static app icon and in-app artwork share the approved golden head and its restrained three-part face. A matching 28-DIP canvas sits at the far right of the status bar only while a project is open; home does not repeat its central mascot in the footer. Home and project-footer artwork use the same mostly neutral 26-second cycle with short blinks and a sideways glance; Reduce Motion holds the neutral frame. The mascot is decorative, with no claim to understand terminal programs or task state.
 
-Implementation and regression coverage are recorded in [Home, project sessions, and mascot](docs/verification.md#home-project-sessions-and-mascot). Integrated native/no-cgo tests, vet, and MyGo checks passed. Native [Dark home](docs/screenshots/mascot-home-dark.png), [compact Light home](docs/screenshots/mascot-home-light-compact.png), and [compact project tabs](docs/screenshots/project-tabs-compact.png) were visually inspected. The packaged application was restarted and verified for home, recent-folder opening, retained terminals across project switches, and the final left-aligned title bar. Screenshots below document previous revisions.
+Implementation and regression coverage are recorded in [Home, project sessions, and mascot](docs/verification.md#original-home-project-sessions-and-mascot). Integrated native/no-cgo tests, vet, and MyGo checks passed. Native [Dark home](docs/screenshots/mascot-home-dark.png), [compact Light home](docs/screenshots/mascot-home-light-compact.png), and [compact project tabs](docs/screenshots/project-tabs-compact.png) were visually inspected. The packaged application was restarted and verified for home, recent-folder opening, retained terminals across project switches, and the final left-aligned title bar. Screenshots below document previous revisions.
 
 ## Review comment list
 

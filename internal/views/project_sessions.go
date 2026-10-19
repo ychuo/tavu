@@ -23,13 +23,17 @@ func (a *App) projectTabs() []projectTab {
 	result := make([]projectTab, 0, len(a.projectOrder))
 	for _, root := range a.projectOrder {
 		s := a.projects[root]
-		if root == a.root {
+		if root == a.workspaceKey() {
 			s = a.captureProjectSession()
 		}
 		if s == nil {
 			continue
 		}
-		result = append(result, projectTab{Root: root, Label: filepath.Base(root), Dirty: s.hasDrafts()})
+		label := filepath.Base(root)
+		if s.standalone {
+			label = a.tr("Standalone Workspace")
+		}
+		result = append(result, projectTab{Root: root, Label: label, Dirty: s.hasDrafts()})
 	}
 	return result
 }
@@ -57,10 +61,10 @@ func (a *App) ensureProjectSessions() {
 	if a.projects == nil {
 		a.projects = map[string]*projectSessionState{}
 	}
-	if a.root != "" {
-		if _, exists := a.projects[a.root]; !exists {
-			a.projects[a.root] = a.captureProjectSession()
-			a.projectOrder = append(a.projectOrder, a.root)
+	if key := a.workspaceKey(); key != "" {
+		if _, exists := a.projects[key]; !exists {
+			a.projects[key] = a.captureProjectSession()
+			a.projectOrder = append(a.projectOrder, key)
 		}
 	}
 }
@@ -85,6 +89,10 @@ func (a *App) startProjectOpen(path string, publish func(func())) {
 		return
 	}
 	a.ensureProjectSessions()
+	if path == standaloneWorkspaceKey {
+		a.activateProject(a.projects[path])
+		return
+	}
 	// A project's directory may disappear while its unsaved buffers are open.
 	// A tab still returns to that retained session; only brand-new paths must
 	// pass filesystem validation before replacing the foreground workspace.
@@ -98,7 +106,7 @@ func (a *App) startProjectOpen(path string, publish func(func())) {
 	}
 	fs, err := files.New(path)
 	if err != nil {
-		a.fail(err)
+		a.message = a.projectOpenError(path, err)
 		return
 	}
 	if fs.Root() == a.root {
@@ -183,7 +191,9 @@ func (a *App) startProjectOpen(path string, publish func(func())) {
 			a.rebuildRows()
 			a.terms = a.newProjectTerminalManager(s.root)
 			a.message = a.tr("Folder opened")
-			if gitErr != nil {
+			if errors.Is(gitErr, gitrepo.ErrNotRepository) {
+				a.message = a.tr("Folder opened")
+			} else if gitErr != nil {
 				a.message = a.tr("Folder opened. Git unavailable: %s", gitErr.Error())
 			}
 			a.rememberRecentProject(a.root)
@@ -251,18 +261,20 @@ func (a *App) parkProject() {
 	a.quickQuery, a.quickNotice, a.quickResults = "", "", nil
 	a.quickSelected = 0
 	a.renameTerminalID, a.terminalNameDraft = "", ""
-	if a.root != "" {
-		a.projects[a.root] = a.captureProjectSession()
+	if key := a.workspaceKey(); key != "" {
+		a.projects[key] = a.captureProjectSession()
 		if a.commitDrafts == nil {
 			a.commitDrafts = map[string]string{}
 		}
-		a.commitDrafts[a.root] = a.commitMessage
+		if a.root != "" {
+			a.commitDrafts[a.root] = a.commitMessage
+		}
 	}
 	a.projectCtx = nil
 }
 
 func (a *App) activateProject(s *projectSessionState) {
-	if s == nil || s.root == a.root {
+	if s == nil || s.workspaceKey() == a.workspaceKey() {
 		return
 	}
 	a.parkProject()
@@ -277,9 +289,10 @@ func (a *App) activateProject(s *projectSessionState) {
 	if a.terms != nil {
 		a.reconcileTerminals(a.terms.Sessions())
 	}
+	a.restoreProjectFocus()
 	a.settings.LastProject = a.root
 	a.saveSettings()
-	if a.win != nil {
+	if a.win != nil && !a.standalone {
 		a.watch(a.projectCtx, a.generation, a.root, a.status.GitDir, a.status.CommonDir)
 		a.reloadTree()
 		a.refreshGitWorkspace()
@@ -344,7 +357,7 @@ func (a *App) projectTerminalManagers() []*sessions.Manager {
 	}
 	add(a.terms)
 	for root, state := range a.projects {
-		if root != a.root && state != nil {
+		if root != a.workspaceKey() && state != nil {
 			add(state.terms)
 		}
 	}
@@ -369,14 +382,21 @@ func (a *App) requestCloseProject(root string) {
 	if s == nil {
 		return
 	}
-	if root != a.root {
-		a.projectCloseReturnRoot = a.root
+	if root != a.workspaceKey() {
+		a.projectCloseReturnRoot = a.workspaceKey()
+		if a.isProjectHome() {
+			a.projectCloseReturnRoot = projectHomeSessionKey
+		}
 		a.activateProject(s)
 	}
-	if a.guardReviewTransition("Close Project", nil, func() { a.requestCloseProject(root) }) {
+	label := "Close Project"
+	if a.standalone {
+		label = "Close Workspace"
+	}
+	if a.guardReviewTransition(label, nil, func() { a.requestCloseProject(root) }) {
 		return
 	}
-	if a.guardFileTransition("Close Project", nil, func() { a.requestCloseProject(root) }) {
+	if a.guardFileTransition(label, nil, func() { a.requestCloseProject(root) }) {
 		return
 	}
 	if managerHasActiveTerms(a.terms) {
@@ -393,7 +413,11 @@ func (a *App) cancelProjectClose() {
 	previous := a.projectCloseReturnRoot
 	a.projectCloseReturnRoot = ""
 	a.confirmProject, a.pendingProject = false, ""
-	if previous != "" && previous != a.root {
+	if previous == projectHomeSessionKey {
+		a.activateProjectHome()
+		return
+	}
+	if previous != "" && previous != a.workspaceKey() {
 		if state := a.projects[previous]; state != nil {
 			a.activateProject(state)
 		}
@@ -402,11 +426,12 @@ func (a *App) cancelProjectClose() {
 
 // The terminal confirmation calls this only after review/file guards finish.
 func (a *App) closeProjectNow(root string) {
-	if root != a.root || a.busy || a.fileBusy || a.loading || a.termStarting || a.quitting {
+	if root != a.workspaceKey() || a.busy || a.fileBusy || a.loading || a.termStarting || a.quitting {
 		return
 	}
 	a.confirmProject, a.pendingProject = false, ""
 	manager := a.terms
+	a.forgetTerminalDrafts(manager, "")
 	a.parkProject()
 	delete(a.projects, root)
 	index := 0
@@ -426,13 +451,13 @@ func (a *App) closeProjectNow(root string) {
 	next := a.projectCloseReturnRoot
 	a.projectCloseReturnRoot = ""
 	a.restoreProjectSession(a.emptyProjectSession())
-	if a.projects[next] == nil && len(order) > 0 {
+	if next != projectHomeSessionKey && a.projects[next] == nil && len(order) > 0 {
 		next = order[min(index, len(order)-1)]
 	}
 	if state := a.projects[next]; state != nil {
 		a.activateProject(state)
 	}
-	if a.root == "" {
+	if a.isProjectHome() {
 		a.settings.LastProject = ""
 		a.message = ""
 		a.saveSettings()
@@ -449,7 +474,7 @@ func (a *App) closeProjectNow(root string) {
 func (a *App) guardParkedProjectShutdown() bool {
 	a.ensureProjectSessions()
 	for _, root := range a.projectOrder {
-		if root == a.root {
+		if root == a.workspaceKey() {
 			continue
 		}
 		if state := a.projects[root]; state != nil && state.hasDrafts() {

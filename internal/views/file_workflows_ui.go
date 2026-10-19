@@ -3,7 +3,9 @@ package views
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,8 +35,7 @@ func (a *App) workingFileMenu(m *ui.Menu, d *document) {
 		a.saveFileDocuments([]string{d.ID}, nil)
 	}
 	if m.Item(a.tr("Save As…")).Disabled(a.fileActionsDisabled()).Chosen() {
-		a.beginFileAction("Save As", d.Path, false)
-		a.fileActionDocumentID = d.ID
+		a.saveFileAs(d)
 	}
 	if m.Item(a.tr("Save All")).Disabled(len(a.dirtyFileIDs(nil)) == 0 || a.fileActionsDisabled()).Chosen() {
 		a.saveAllFiles()
@@ -62,6 +63,7 @@ func (a *App) explorerFileActions(c *ui.Context) {
 			a.revealActiveFile()
 		}
 		if m.Item(a.tr("Collapse Folders")).Chosen() {
+			a.cancelInlineFileAction()
 			a.expanded = map[string]bool{}
 			a.rebuildRows()
 		}
@@ -97,7 +99,7 @@ func (a *App) fileMenu(m *ui.Menu, path string, directory bool) {
 	if m.Item(a.tr("Move…")).Disabled(a.fileActionsDisabled()).Chosen() {
 		a.beginFileAction("Move", path, directory)
 	}
-	if m.Item(a.tr("Duplicate…")).Disabled(a.fileActionsDisabled()).Chosen() {
+	if m.Item(a.tr("Duplicate")).Disabled(a.fileActionsDisabled()).Chosen() {
 		a.beginFileAction("Duplicate", path, directory)
 	}
 	m.Separator()
@@ -112,6 +114,8 @@ func (a *App) beginFileAction(action, path string, directory bool) {
 	}
 	a.fileAction, a.fileActionPath, a.fileActionDirectory, a.fileActionError = action, path, directory, ""
 	a.fileActionDocumentID = ""
+	a.fileActionInline = action == "Rename" || action == "Duplicate"
+	a.fileActionFocus = action == "Rename"
 	switch action {
 	case "New File":
 		a.fileActionDraft = filepath.ToSlash(filepath.Join(path, "untitled.txt"))
@@ -121,12 +125,34 @@ func (a *App) beginFileAction(action, path string, directory bool) {
 		a.fileActionDraft = filepath.Base(path)
 	case "Duplicate":
 		a.fileActionDraft = duplicateFileName(path, directory)
+	case "Save As":
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		name, err := a.fs.SuggestCopyName(ctx, path)
+		if err != nil {
+			a.fileActionDraft = duplicateFileName(path, directory)
+			a.fileActionError = a.fileOperationError(err)
+		} else {
+			a.fileActionDraft = name
+		}
 	default:
 		a.fileActionDraft = path
+	}
+	if a.fileActionInline {
+		a.sidebar, a.sidebarTab = true, 0
+		a.revealPath = path
+		a.readerFocus, a.termFocus = false, ""
+	}
+	if action == "Duplicate" {
+		a.executeFileAction()
 	}
 }
 
 func (a *App) executeFileAction() {
+	a.startFileAction(a.update)
+}
+
+func (a *App) startFileAction(publish func(func())) {
 	if a.fileActionsDisabled() {
 		return
 	}
@@ -139,7 +165,7 @@ func (a *App) executeFileAction() {
 		destination = filepath.ToSlash(filepath.Join(filepath.Dir(source), destination))
 	}
 	if action == "Duplicate" || action == "Move to Trash" {
-		if a.guardFileTransition(action, a.fileOperationIDs(source), a.executeFileAction) {
+		if a.guardFileTransition(action, a.fileOperationIDs(source), func() { a.startFileAction(publish) }) {
 			return
 		}
 	}
@@ -183,7 +209,7 @@ func (a *App) executeFileAction() {
 		case "Rename", "Move":
 			err = service.Move(ctx, source, destination)
 		case "Duplicate":
-			err = service.Duplicate(ctx, source, destination)
+			destination, err = service.DuplicateSibling(ctx, source)
 		case "Move to Trash":
 			err = service.Trash(ctx, source, mygo.Shell.TrashItem)
 		case "Save As":
@@ -191,16 +217,17 @@ func (a *App) executeFileAction() {
 		default:
 			err = fmt.Errorf("%s", a.tr("Unknown file action"))
 		}
-		a.update(func() {
+		publish(func() {
 			if generation != a.generation {
 				return
 			}
 			a.fileBusy = false
 			if err != nil {
-				a.fileActionError = err.Error()
+				a.fileActionError = a.fileOperationError(err)
 				return
 			}
 			a.fileAction = ""
+			a.fileActionInline, a.fileActionFocus = false, false
 			switch action {
 			case "Save As":
 				if d := a.fileDocument(saveAsRequest.id); d != nil {
@@ -221,7 +248,12 @@ func (a *App) executeFileAction() {
 				a.message = a.tr("Saved %s", filepath.Base(destination))
 			case "Rename", "Move":
 				a.remapFileDocuments(source, destination)
-				a.message = a.tr("Moved %s", filepath.Base(destination))
+				a.revealFileOperation(destination, directory)
+				if action == "Rename" {
+					a.message = a.tr("Renamed %s", filepath.Base(destination))
+				} else {
+					a.message = a.tr("Moved %s", filepath.Base(destination))
+				}
 			case "Move to Trash":
 				// The preceding guard already obtained the decision for these
 				// buffers. Native Trash preserves disk data for Finder recovery.
@@ -252,24 +284,18 @@ func (a *App) executeFileAction() {
 func (a *App) fileDialogs(c *ui.Context) {
 	// Show one layer at a time. The file action is retained behind Save changes,
 	// and a disk conflict is retained behind the comparison document.
-	showAction := a.fileAction != "" && !a.fileGuardOpen && a.fileConflictID == ""
+	showAction := a.fileAction != "" && !a.fileActionInline && !a.fileGuardOpen && a.fileConflictID == ""
+	if showAction && a.fileAction == "Move to Trash" {
+		a.trashFileDialog(c)
+		showAction = false
+	}
 	if showAction {
 		open := true
 		description := "Path relative to this folder"
-		if a.fileAction == "Rename" {
-			description = "Enter a new name"
-		}
-		if a.fileAction == "Move to Trash" {
-			description = "You can restore this item from Finder’s Trash."
-		}
 		tavuDialog(c.Key("file-operation"), &open, a.fileAction, description, 480, 140, func(width, _ float32) {
-			if a.fileAction == "Move to Trash" {
-				ui.Text(c, a.fileActionPath).FontSize(13).MaxWidth(width)
-			} else {
-				input := tavuDialogField(c, ui.TextInput(c, &a.fileActionDraft)).Width(width).Label(tr(c, "File Path")).ReadOnly(a.fileBusy).AutoFocus()
-				if input.Submitted() && !a.fileBusy {
-					a.executeFileAction()
-				}
+			input := tavuDialogField(c, ui.TextInput(c, &a.fileActionDraft)).Width(width).Label(tr(c, "File Path")).ReadOnly(a.fileBusy).AutoFocus()
+			if input.Submitted() && !a.fileBusy {
+				a.executeFileAction()
 			}
 			if a.fileActionError != "" {
 				ui.Text(c, a.fileActionError).FontSize(12).TextColor(c.Theme().Danger).MaxWidth(width)
@@ -293,7 +319,7 @@ func (a *App) fileDialogs(c *ui.Context) {
 		}, func() {
 			tavuDialogButton(c, "Don’t Save", false).Disabled(a.fileActionsDisabled()).OnClick(a.discardFileGuard)
 			tavuDialogButton(c, "Cancel", false).Disabled(a.fileBusy).OnClick(a.cancelFileGuard)
-			tavuDialogButton(c, "Save", true).Disabled(a.fileBusy).OnClick(func() { a.saveFileDocuments(a.fileGuardIDs, a.finishFileGuard) })
+			tavuDialogButton(c, "Save", true).Disabled(a.fileBusy).AutoFocus().OnClick(func() { a.saveFileDocuments(a.fileGuardIDs, a.finishFileGuard) })
 		})
 		if !open && !a.fileBusy {
 			a.cancelFileGuard()
@@ -322,5 +348,20 @@ func (a *App) fileDialogs(c *ui.Context) {
 }
 
 func (a *App) fileModalOpen() bool {
-	return a.fileAction != "" || a.fileGuardOpen || a.fileConflictID != ""
+	return a.fileAction != "" && !a.fileActionInline || a.fileGuardOpen || a.fileConflictID != ""
+}
+
+func (a *App) fileOperationError(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrExist):
+		return a.tr("An item with this name already exists. Choose another name.")
+	case errors.Is(err, fs.ErrNotExist):
+		return a.tr("This file or folder is no longer available. Refresh and try again.")
+	case errors.Is(err, fs.ErrPermission):
+		return a.tr("You don’t have permission to change this file or folder.")
+	case errors.Is(err, files.ErrOutsideRoot), errors.Is(err, files.ErrProtectedPath), errors.Is(err, files.ErrSymlinkWrite):
+		return a.tr(err.Error())
+	default:
+		return err.Error()
+	}
 }

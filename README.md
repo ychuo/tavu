@@ -12,7 +12,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-![Tavu workspace with Git changes, code review, and a terminal](docs/screenshots/workspace.png)
+![Tavu home with folder, terminal, and file entry points and pinned projects](docs/screenshots/home.png)
 
 Tavu is a native macOS workspace for running your tools, editing files, and reviewing changes in one place. Written in Go with [MyGo](https://github.com/egoist/mygo).
 
@@ -22,10 +22,12 @@ Tavu is a native macOS workspace for running your tools, editing files, and revi
 - **Terminal:** real shells, tabs, split panes, and adjustable fonts, powered by libghostty-vt.
 - **Files:** edit and organize files, open them by name, and search with replacement previews.
 - **Git:** stage files or hunks, commit, manage branches and stashes, inspect history, and fetch, pull, or push.
-- **Review:** browse changes continuously or file by file, leave versioned comments, track viewed files, and copy feedback.
+- **Review:** browse changes continuously or file by file, leave versioned comments, and paste or drag feedback into a terminal.
 - **Appearance:** light, dark, or system themes; English, 简体中文, 繁體中文, and 日本語.
 
 Your files and reviews stay local. Run your preferred CLI tools in the terminal; Tavu has no built-in AI service, account, or telemetry.
+
+![Tavu workspace with Git changes, code review, and a terminal](docs/screenshots/workspace.png)
 
 ## Getting started
 
@@ -38,7 +40,7 @@ cd tavu
 open build/darwin-arm64/Tavu.app
 ```
 
-Choose **Open Folder** to start. Builds are locally signed; notarized downloads are not available yet.
+Start with **Open Folder**, **Open Terminal**, or **Open File**. Builds are locally signed; notarized downloads are not available yet.
 
 ## Development
 
@@ -52,6 +54,6 @@ Use the project scripts to include the native diff-scroll fix. See [development 
 ## Documentation
 
 - [Usage and shortcuts](docs/usage.md)
-- [v0.1.0 limitations](docs/limitations.md)
+- [v0.1.1 limitations](docs/limitations.md)
 - [UI style](docs/ui-style.md) · [Verification](docs/verification.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

@@ -178,6 +178,10 @@ type ConflictSides struct {
 }
 
 func (r *Repository) ConflictSides(ctx context.Context, path, token string) (ConflictSides, error) {
+	return r.conflictSides(ctx, path, token, true)
+}
+
+func (r *Repository) conflictSides(ctx context.Context, path, token string, includeResult bool) (ConflictSides, error) {
 	v := ConflictSides{Path: path}
 	s, e := r.expected(ctx, token)
 	if e != nil {
@@ -218,9 +222,11 @@ func (r *Repository) ConflictSides(ctx context.Context, path, token string) (Con
 			v.Incoming = side
 		}
 	}
-	v.Result, e = r.workingVersion(ctx, path, "")
-	if e != nil {
-		return v, e
+	if includeResult {
+		v.Result, e = r.workingVersion(ctx, path, "")
+		if e != nil {
+			return v, e
+		}
 	}
 	after, e := r.Status(ctx)
 	if e != nil {

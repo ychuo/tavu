@@ -14,6 +14,7 @@ import (
 // window, global settings, cancellation functions and async request counters.
 // Project state is parked only after its read jobs have been invalidated.
 type projectSessionState struct {
+	standalone bool
 	gitWorkspaceState
 	reviewDrafts            map[*document]reviewDraft
 	statusEpoch             uint64
@@ -29,6 +30,7 @@ type projectSessionState struct {
 	changed                 bool
 	snapshotCheckNotice     string
 	message                 string
+	fileOpenError           string
 	terms                   *sessions.Manager
 	activeTerm              string
 	secondTerm              string
@@ -108,6 +110,7 @@ type projectSessionState struct {
 
 func (a *App) captureProjectSession() *projectSessionState {
 	return &projectSessionState{
+		standalone:              a.standalone,
 		gitWorkspaceState:       a.gitWorkspaceState,
 		reviewDrafts:            a.reviewDrafts,
 		statusEpoch:             a.statusEpoch,
@@ -123,6 +126,7 @@ func (a *App) captureProjectSession() *projectSessionState {
 		changed:                 a.changed,
 		snapshotCheckNotice:     a.snapshotCheckNotice,
 		message:                 a.message,
+		fileOpenError:           a.fileOpenError,
 		terms:                   a.terms,
 		activeTerm:              a.activeTerm,
 		secondTerm:              a.secondTerm,
@@ -210,6 +214,7 @@ func (a *App) restoreProjectSession(s *projectSessionState) {
 	a.statusEpoch = s.statusEpoch
 	a.latest = s.latest
 	a.collapsedChanges = s.collapsedChanges
+	a.standalone = s.standalone
 	a.root = s.root
 	a.fs = s.fs
 	a.repo = s.repo
@@ -220,6 +225,7 @@ func (a *App) restoreProjectSession(s *projectSessionState) {
 	a.changed = s.changed
 	a.snapshotCheckNotice = s.snapshotCheckNotice
 	a.message = s.message
+	a.fileOpenError = s.fileOpenError
 	a.terms = s.terms
 	a.activeTerm = s.activeTerm
 	a.secondTerm = s.secondTerm

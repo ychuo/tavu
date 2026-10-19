@@ -64,6 +64,8 @@ func (a *App) reader(c *ui.Context) {
 			version := ""
 			if d.Replacement {
 				version = "Replace Preview · Not Saved"
+			} else if strings.HasPrefix(d.ID, "conflict-preview:") {
+				version = "Save Conflict"
 			} else if d.SnapshotID != "" {
 				version = "Saved Review"
 			} else if d.Diff != nil {
@@ -130,6 +132,7 @@ func (a *App) reader(c *ui.Context) {
 			})
 		})
 		a.gitConflictToolbar(c, d)
+		a.fileConflictComparisonToolbar(c, d)
 		if d.VersionNotice != "" {
 			ui.Row(c).FillWidth().Padding(5, 10).Gap(8).AlignItems(ui.Center).Background(palette(c).chrome).Children(func() {
 				ui.Text(c, d.displayVersionNotice(c.Locale())).FontSize(12).SingleLine().Grow(1).MinWidth(0).TextColor(c.Theme().TextMuted)
@@ -202,8 +205,8 @@ func (a *App) reviewComments() []review.Comment {
 
 func reviewPanelHeight(readerHeight float32, count int) float32 {
 	// The list scrolls instead of pushing the composer outside a short pane.
-	desired := min(float32(224), float32(112+min(count, 3)*40))
-	return min(desired, max(float32(96), readerHeight-156))
+	desired := min(float32(288), float32(176+min(count, 3)*40))
+	return min(desired, max(float32(160), readerHeight-156))
 }
 
 func (a *App) commentsView(c *ui.Context) {
@@ -292,7 +295,10 @@ func (a *App) commentsView(c *ui.Context) {
 }
 
 func (a *App) commentComposer(c *ui.Context, d *document) {
-	ui.Row(c.Key("comment-composer")).Height(30).Shrink(0).Gap(6).FillWidth().AlignItems(ui.Center).Children(func() {
+	if !a.commentFile && d.Diff != nil {
+		a.selectedRange, a.hasRange = d.Diff.SelectedLines()
+	}
+	ui.Row(c.Key("comment-composer")).Height(66).Shrink(0).Gap(6).FillWidth().AlignItems(ui.Start).Children(func() {
 		scope := "Select Lines"
 		if a.commentFile {
 			scope = "File"
@@ -322,7 +328,7 @@ func (a *App) commentComposer(c *ui.Context, d *document) {
 		if a.commentFile {
 			placeholder = "Comment on this file…"
 		}
-		input := ui.TextInputBase(c, &a.commentDraft).Label(tr(c, "Review Comment")).Placeholder(tr(c, placeholder)).Height(30).FontSize(13).Padding(0, 9).Grow(1).MinWidth(0).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6)
+		input := ui.TextArea(c, &a.commentDraft).Label(tr(c, "Review Comment")).Placeholder(tr(c, placeholder)).Height(66).FontSize(13).Padding(6, 9).Grow(1).MinWidth(0).Background(c.Theme().Surface).Border(1, ui.Transparent).Radius(6)
 		if a.commentFocus {
 			input.Focus()
 			a.commentFocus = false
@@ -331,6 +337,9 @@ func (a *App) commentComposer(c *ui.Context, d *document) {
 			input.BorderColor(palette(c).accent.Alpha(.65))
 		}
 		canSave := (a.commentFile || a.hasRange) && strings.TrimSpace(a.commentDraft) != ""
+		if input.Shortcut(ui.Cmd, ui.KeyEnter) && canSave {
+			a.addComment()
+		}
 		send := toolButton(c, "arrow-up-right", "Save Comment").Size(30, 30).Background(c.Theme().Surface).Disabled(!canSave).OnClick(a.addComment)
 		if canSave {
 			send.Background(c.Theme().Accent).TextColor(c.Theme().AccentText)
@@ -341,6 +350,11 @@ func (a *App) commentComposer(c *ui.Context, d *document) {
 			}
 		}
 	})
+	hint := tr(c, "Enter for a new line · ⌘Enter to save")
+	if !a.commentFile && !a.hasRange {
+		hint = tr(c, "Select diff lines, or choose Entire File, to save this comment.")
+	}
+	ui.Text(c, hint).FontSize(11).FillWidth().TextColor(c.Theme().TextMuted)
 }
 
 func (a *App) hasExport() bool {

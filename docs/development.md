@@ -24,6 +24,13 @@ Scripts set `-buildvcs=false` and use a dedicated temporary build cache. Set `TA
 
 ## Package
 
+macOS packaging also requires Xcode 26 or later for the native Icon Composer
+document in `resources/Tavu.icon`. If the selected developer directory only
+contains Command Line Tools, the package script uses `/Applications/Xcode.app`
+for this build. Set `DEVELOPER_DIR` explicitly for an Xcode installed elsewhere.
+The script requires the compiled icon catalog instead of silently falling back
+to the legacy icon.
+
 ```sh
 ./scripts/package.sh
 open build/darwin-arm64/Tavu.app

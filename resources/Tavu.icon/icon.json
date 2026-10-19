@@ -1,0 +1,24 @@
+{
+  "fill": {
+    "solid": "srgb:0.102,0.208,0.153,1"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "monkey.png",
+          "name": "Tavu",
+          "glass": false,
+          "position": {
+            "scale": 0.9,
+            "translation-in-points": [0, 0]
+          }
+        }
+      ],
+      "shadow": {"kind": "neutral", "opacity": 0},
+      "specular": false,
+      "translucency": {"enabled": false, "value": 0}
+    }
+  ],
+  "supported-platforms": {"squares": ["macOS"]}
+}

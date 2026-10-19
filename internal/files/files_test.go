@@ -128,6 +128,69 @@ func TestListIsOneDirectoryAndHidesGit(t *testing.T) {
 		t.Fatalf("unexpected list: %+v", entries)
 	}
 }
+
+func TestListFoldersFirstAndAlphabeticalAtEveryLevel(t *testing.T) {
+	s, root := fixture(t)
+	for _, parent := range []string{".", "build"} {
+		for _, name := range []string{".gitignore", "CHANGELOG.md", "design-qa.md", "go.mod", "README.md"} {
+			put(t, root, filepath.Join(parent, name), nil)
+		}
+		for _, name := range []string{".github", "build", "Docs", "internal", "Tools"} {
+			if err := os.MkdirAll(filepath.Join(root, parent, name), 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, parent := range []string{".", "build"} {
+		t.Run(parent, func(t *testing.T) {
+			entries, err := s.List(context.Background(), parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{".github", "build", "Docs", "internal", "Tools", ".gitignore", "CHANGELOG.md", "design-qa.md", "go.mod", "README.md"}
+			var got []string
+			for i, entry := range entries {
+				got = append(got, entry.Name)
+				if entry.Dir != (i < 5) || entry.Path != filepath.ToSlash(filepath.Join(parent, entry.Name)) {
+					t.Errorf("entry %d has incorrect type or path: %+v", i, entry)
+				}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("directory listing = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestListSortsSafeFolderLinksWithoutFollowingBlockedLinks(t *testing.T) {
+	s, root := fixture(t)
+	put(t, root, "real/file", nil)
+	put(t, root, "a.txt", nil)
+	if err := os.Symlink("real", filepath.Join(root, "Alias")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(root, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := s.List(context.Background(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, entry := range entries {
+		got = append(got, entry.Name)
+	}
+	if want := []string{"Alias", "real", "a.txt", "escape"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("directory listing = %v, want %v", got, want)
+	}
+	if !entries[0].Dir || !entries[0].Symlink || entries[0].Blocked {
+		t.Fatalf("safe folder link lost its classification: %+v", entries[0])
+	}
+	if !entries[3].Symlink || !entries[3].Blocked || entries[3].Dir {
+		t.Fatalf("outside link lost its blocked classification: %+v", entries[3])
+	}
+}
+
 func TestSearchExclusionsLimitsAndCancel(t *testing.T) {
 	s, root := fixture(t)
 	for _, path := range []string{".git/config", "node_modules/x", "vendor/x", "dist/x", "generated/x", ".mygo/output", ".venv/x", "linked/.git"} {

@@ -2,6 +2,14 @@
 
 Date: 2026-10-19 (Asia/Shanghai). Host: macOS 26.5, arm64; Git 2.50.1 (Apple Git-155). All Git write tests used temporary repositories. Tests did not stage, commit, or push the user's working directory. This is a record of development checks; historical sections apply only to the builds they describe and do not validate the current release. Superseded visual experiments and restoration narratives are omitted.
 
+## v0.1.3 Explorer ordering and native macOS icon
+
+- Explorer sorts folders before files at every level, with case-insensitive name ordering within each group. Tests cover mixed-case names, nested directories, safe folder links, and blocked links outside the project. Search traversal is unchanged.
+- The native `resources/Tavu.icon` uses the existing neutral monkey PNG unchanged over a full green background, with the outer mask supplied by macOS. Packaging compiles the catalog with Xcode 26 and requires `Assets.car` and `CFBundleIconName`, preventing silent fallback to the inset legacy artwork.
+- File tests, Explorer/Project view regressions, full native and CGO-disabled tests, Go vet, MyGo vet, executable build, strict bundle signature validation, and native-library diagnostics passed. `scripts/check.sh` stops at existing formatting differences in `internal/views/i18n_handoff.go` and `internal/views/i18n_workspace.go`; its remaining checks were run individually and passed. Those unrelated files were left unchanged.
+- Restarted the packaged application under the standing authorization. The real project tree showed all six folders above files, and Finder's Get Info preview showed the green icon filling its system shape without the gray inset surround.
+- Repackaged as v0.1.3; both bundle version fields and `--diagnostics` report `0.1.3`. Native icon compilation, strict signature validation, and bundled terminal-library loading passed for the versioned build.
+
 ## v0.1.2 Markdown and image previews
 
 - Reproduced both reported failures with native UI tests: Markdown had no preview action, and opening a PNG from a project or Home returned the text reader's binary-file error. Both regression tests now pass on `codex/file-previews`.

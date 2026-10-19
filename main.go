@@ -51,7 +51,7 @@ func diagnostics() {
 	if err == nil {
 		err = terminal.Load()
 	}
-	result := map[string]any{"product": "Tavu", "version": "0.1.2", "mygo": "v0.5.5", "go": runtime.Version(), "platform": runtime.GOOS + "/" + runtime.GOARCH, "executable": executable, "terminalLibrary": library, "libraryLoaded": err == nil}
+	result := map[string]any{"product": "Tavu", "version": "0.1.3", "mygo": "v0.5.5", "go": runtime.Version(), "platform": runtime.GOOS + "/" + runtime.GOARCH, "executable": executable, "terminalLibrary": library, "libraryLoaded": err == nil}
 	if err != nil {
 		result["error"] = err.Error()
 	}

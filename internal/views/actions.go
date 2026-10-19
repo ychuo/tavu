@@ -107,7 +107,7 @@ func (a *App) refresh() {
 			if !ok {
 				continue
 			}
-			f, e := source.service.Read(query, source.path)
+			f, e := source.service.ReadPreview(query, source.path)
 			disk[path] = diskVersion{hash: f.Hash, err: e}
 		}
 		a.update(func() {

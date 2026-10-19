@@ -22,6 +22,7 @@ import (
 )
 
 type document struct {
+	filePreviewState
 	// Standalone files retain their own bounded disk service across workspace switches.
 	fileService     *files.Service
 	fileServicePath string

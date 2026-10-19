@@ -329,7 +329,7 @@ func (a *App) newProjectTerminalManager(root string) *sessions.Manager {
 				a.fail(err)
 				return
 			}
-			a.openFile(filepath.ToSlash(path), target.Line)
+			a.startFileLoad(diskOpenRequest{path: filepath.ToSlash(path), line: target.Line, preview: true, navigate: true}, a.update)
 		},
 	})
 }

@@ -61,6 +61,11 @@ func (d *document) fileDirty() bool {
 func (a *App) syncFileDocuments() {
 	for _, d := range a.documents {
 		d.fileDirty()
+		if d.isSVG() && d.renderPreview && d.Code.Buffer.Version() != d.imageVersion {
+			// Undo/discard/conflict resolution may change source while its image
+			// is visible. Never leave discarded artwork presented as current.
+			d.renderPreview = false
+		}
 	}
 }
 
@@ -372,12 +377,22 @@ func (a *App) overwriteFileConflict() {
 
 func (a *App) remapFileDocuments(from, to string) {
 	for _, d := range a.documents {
-		if !d.FileEditable || (d.Path != from && !strings.HasPrefix(d.Path, from+"/")) {
+		if d.DiskHash == "" || d.Comparison != nil || d.Replacement || (d.Path != from && !strings.HasPrefix(d.Path, from+"/")) {
 			continue
 		}
+		wasMarkdown, wasSVG := d.isMarkdown(), d.isSVG()
 		d.Path = to + strings.TrimPrefix(d.Path, from)
 		d.Label = filepath.Base(d.Path)
-		d.Code.Buffer.SetLanguage(editor.LanguageFor(d.Path))
+		if d.Code != nil {
+			d.Code.Buffer.SetLanguage(editor.LanguageFor(d.Path))
+			if wasMarkdown != d.isMarkdown() || wasSVG != d.isSVG() {
+				// A new extension can remove the preview switch entirely. Return
+				// to the retained source instead of trapping it behind old artwork.
+				d.renderPreview = false
+				d.image, d.imageError = nil, ""
+			}
+		}
+		d.markdown = nil
 	}
 }
 

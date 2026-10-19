@@ -46,6 +46,7 @@ func (a *App) showSearchMatch(f files.Document, match files.Match) {
 			break
 		}
 	}
+	d.renderPreview = false
 	lines := strings.Split(f.Text, "\n")
 	if match.Line > 0 && match.Line <= len(lines) && strings.TrimSuffix(lines[match.Line-1], "\r") == match.Text {
 		start, e1 := files.ByteOffset(f.Raw, match.Line, match.Column)

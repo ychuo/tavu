@@ -46,6 +46,15 @@ func patchFixture(t *testing.T) (root, source string, specs []patchSpec) {
 			t.Fatal(err)
 		}
 	}
+	for path, content := range magnifyFixtures {
+		path = filepath.Join(source, path)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, spec := range sourceSpecs {
 		data, err := os.ReadFile(filepath.Join(source, spec.Path))
 		if err != nil {

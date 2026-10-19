@@ -203,6 +203,25 @@ func (s *Service) Read(ctx context.Context, relative string) (Document, error) {
 }
 
 func (s *Service) read(ctx context.Context, root *os.Root, name, relative string) (Document, error) {
+	limit := s.MaxBytes
+	if limit <= 0 {
+		limit = DefaultMaxBytes
+	}
+	doc, err := s.readRaw(ctx, root, name, relative, limit)
+	if err != nil {
+		return Document{}, err
+	}
+	if err := ValidateText(doc.Raw); err != nil {
+		return Document{}, err
+	}
+	doc.Text = string(doc.Raw)
+	return doc, nil
+}
+
+// readRaw is the common bounded, anchored read for text and image previews.
+// It deliberately leaves Text empty; callers must validate text before exposing
+// bytes to text editing, search, or replacement operations.
+func (s *Service) readRaw(ctx context.Context, root *os.Root, name, relative string, limit int64) (Document, error) {
 	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
@@ -224,10 +243,6 @@ func (s *Service) read(ctx context.Context, root *os.Root, name, relative string
 	}
 	if !info.Mode().IsRegular() {
 		return Document{}, fmt.Errorf("Not a regular file: %s", relative)
-	}
-	limit := s.MaxBytes
-	if limit <= 0 {
-		limit = DefaultMaxBytes
 	}
 	if info.Size() > limit {
 		return Document{}, ErrTooLarge
@@ -254,11 +269,8 @@ func (s *Service) read(ctx context.Context, root *os.Root, name, relative string
 		}
 	}
 	data := raw.Bytes()
-	if err := ValidateText(data); err != nil {
-		return Document{}, err
-	}
 	hash := sha256.Sum256(data)
-	return Document{Path: filepath.ToSlash(filepath.Clean(relative)), Raw: data, Hash: hex.EncodeToString(hash[:]), Text: string(data)}, nil
+	return Document{Path: filepath.ToSlash(filepath.Clean(relative)), Raw: data, Hash: hex.EncodeToString(hash[:])}, nil
 }
 
 func ValidateText(raw []byte) error {

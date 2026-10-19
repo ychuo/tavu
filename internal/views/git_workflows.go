@@ -137,7 +137,9 @@ func (a *App) confirmGit(title, body string, fn func()) {
 func (a *App) gitControls(c *ui.Context) {
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
 		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-			flatButton(c, "Switch Branch").Grow(1).MinWidth(0).Padding(4, 0).Disabled(a.repo == nil || a.busy || a.fileBusy || a.loading).OnClick(func() { a.openBranchPicker("branches") }).Children(func() {
+			// Extend the hover into the section gutter while preserving the icon
+			// and text alignment with the other Source Control rows.
+			flatButton(c, "Switch Branch").Grow(1).MinWidth(0).Margin(0, 0, 0, -scmRowPadding).Padding(4, scmRowPadding).Disabled(a.repo == nil || a.busy || a.fileBusy || a.loading).OnClick(func() { a.openBranchPicker("branches") }).Children(func() {
 				glyph(c, "git-branch").FontSize(13).TextColor(c.Theme().TextMuted)
 				ui.Text(c, a.branchLabel()).FontSize(13).SingleLine().Grow(1).MinWidth(0)
 				glyph(c, "chevron-down").FontSize(11).TextColor(c.Theme().TextMuted)

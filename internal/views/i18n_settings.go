@@ -1,6 +1,8 @@
 package views
 
 var settingsTranslations = map[string][3]string{
+	"Prompt icons depend on the installed font": {"提示符图标取决于安装的字体", "提示字元圖示取決於安裝的字型", "プロンプトアイコンはインストール済みフォントに依存します"},
+	"Shell is unavailable or not executable. Choose an executable path or leave it blank for the default shell.": {"Shell 不存在或不可执行。请选择可执行文件，或留空使用默认 Shell。", "Shell 不存在或無法執行。請選擇可執行檔案，或留空使用預設 Shell。", "シェルが見つからないか実行できません。実行可能ファイルを選ぶか、空欄で既定のシェルを使用してください。"},
 	"General":                              {"常规", "一般", "一般"},
 	"Make Tavu feel at home.":              {"设置适合你的 Tavu。", "設定適合你的 Tavu。", "使いやすい Tavu に。"},
 	"Settings":                             {"设置", "設定", "設定"},

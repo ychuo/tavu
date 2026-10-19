@@ -78,7 +78,8 @@ func (a *App) reviewSelectionRow(c *ui.Context) {
 	}
 	ui.Row(c).Height(26).FillWidth().Padding(0, reviewRowPadding).Gap(6).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, tr(c, "%d selected", count)).FontSize(12).TextColor(c.Theme().TextMuted).
-			Tooltip("Selected comments across all files").Grow(1).MinWidth(0).SingleLine()
+			Tooltip(tr(c, "Drag selected comments to a terminal")).Drag(a.dragComments(a.selectedExportComments())).Grow(1).MinWidth(0).SingleLine()
+		a.commentPasteButton(c, a.selectedExportComments(), false)
 		flatButton(c, "Done Selecting Comments").Height(24).Padding(0, 6).TextColor(palette(c).accent).
 			Children(func() { ui.Text(c, tr(c, "Done")).FontSize(12) }).OnClick(func() { a.commentsSelecting = false })
 	})
@@ -86,6 +87,9 @@ func (a *App) reviewSelectionRow(c *ui.Context) {
 
 func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 	row := ui.Row(c.Key(cm.ID)).FillWidth().MinWidth(0).Gap(8).Padding(6, reviewRowPadding).AlignItems(ui.Start).Radius(4)
+	if !cm.Resolved {
+		row.Drag(a.dragComments([]review.Comment{cm})).Description(tr(c, "Drag this comment to a terminal"))
+	}
 	if row.Hovered() {
 		row.Background(c.Theme().SurfaceHover)
 	}
@@ -159,6 +163,10 @@ func (a *App) reviewCommentRow(c *ui.Context, cm review.Comment) {
 		bar := ui.Row(c).Absolute().Right(reviewRowPadding).Top(3).Height(24).Gap(2).Padding(0, 0, 0, 4).AlignItems(ui.Center).Radius(3)
 		visible := row.Hovered() || exportFocus || location.FocusVisible() || expand.FocusVisible()
 		bar.Children(func() {
+			if !cm.Resolved {
+				paste := a.commentPasteButton(c, []review.Comment{cm}, true)
+				visible = visible || paste.FocusWithin()
+			}
 			label, icon := "Resolve", "check"
 			if cm.Resolved {
 				label, icon = "Reopen", "undo-2"

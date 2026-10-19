@@ -2,7 +2,6 @@ package views
 
 import (
 	"context"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 	"tavu/internal/gitrepo"
@@ -15,8 +14,9 @@ func (a *App) openGitConflict(change gitrepo.Change) {
 	a.cancelDocumentLoad()
 	repo, ctx, gen, id := a.repo, a.projectCtx, a.generation, a.loadID
 	token := a.status.Token
+	change.StatusToken = token
 	go func() {
-		sides, e := repo.ConflictSides(ctx, change.Path, token)
+		comparison, e := repo.CompareConflict(ctx, change)
 		a.update(func() {
 			if gen != a.generation || repo != a.repo {
 				return
@@ -26,7 +26,6 @@ func (a *App) openGitConflict(change gitrepo.Change) {
 					a.fail(e)
 					return
 				}
-				comparison := gitrepo.Comparison{Change: change, Old: sides.Current, New: sides.Incoming, HEAD: a.status.HEAD, Branch: a.status.Branch, Baseline: "conflict:" + token, CapturedAt: time.Now().UTC()}
 				a.showComparison(comparisonOf(comparison), "")
 				if d := a.current(); d != nil {
 					d.setNotice(noticeMessage("Current ↔ Incoming · Edit the result to resolve"))

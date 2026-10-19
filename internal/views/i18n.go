@@ -47,7 +47,7 @@ func translate(locale, source string, args ...any) string {
 		column = 2
 	}
 	if column >= 0 {
-		for _, catalog := range []map[string][3]string{workspaceTranslations, gitFileTranslations, settingsTranslations, coreTranslations} {
+		for _, catalog := range []map[string][3]string{homeTranslations, handoffTranslations, workspaceTranslations, gitFileTranslations, settingsTranslations, coreTranslations} {
 			if values, ok := catalog[source]; ok && values[column] != "" {
 				source = values[column]
 				break

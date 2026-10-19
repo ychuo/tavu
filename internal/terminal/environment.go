@@ -6,6 +6,13 @@ import (
 	"runtime"
 )
 
+// ValidateShell checks the same executable selection used by new sessions,
+// without starting a process or affecting an existing terminal.
+func ValidateShell(configured string) error {
+	_, err := loginShellCommand(configured)
+	return err
+}
+
 // loginShellCommand clears color policy inherited from an app launcher only in
 // the new interactive terminal. An automation host may disable its own output
 // while this PTY supports truecolor. Shell startup files can still set their

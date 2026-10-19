@@ -40,6 +40,7 @@ type Settings struct {
 	Theme            string   `json:"theme"`
 	Language         string   `json:"language"`
 	RecentProjects   []string `json:"recentProjects"`
+	PinnedProjects   []string `json:"pinnedProjects,omitempty"`
 	LastProject      string   `json:"lastProject"`
 	Shell            string   `json:"shell"`
 	FontSize         float32  `json:"fontSize"`
@@ -87,18 +88,26 @@ func (s *Settings) normalize() {
 	if s.MaxSnapshots < 1 || s.MaxSnapshots > 100 {
 		s.MaxSnapshots = DefaultMaxSnapshots
 	}
+	s.RecentProjects = normalizedProjectPaths(s.RecentProjects, 10)
+	// Pins have their own ordering and remain available after a folder ages out
+	// of the bounded recent history. Older settings simply have no pins.
+	s.PinnedProjects = normalizedProjectPaths(s.PinnedProjects, 0)
+}
+
+func normalizedProjectPaths(paths []string, limit int) []string {
 	seen := make(map[string]bool)
-	var recent []string
-	for _, p := range s.RecentProjects {
-		if p != "" && !seen[p] {
-			recent = append(recent, p)
-			seen[p] = true
+	var result []string
+	for _, path := range paths {
+		if path == "" || seen[path] {
+			continue
 		}
-		if len(recent) == 10 {
+		seen[path] = true
+		result = append(result, path)
+		if limit > 0 && len(result) == limit {
 			break
 		}
 	}
-	s.RecentProjects = recent
+	return result
 }
 
 type envelope struct {

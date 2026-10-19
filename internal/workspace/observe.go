@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	AbsentFingerprint = "absent"
-	MaxObservedKeys   = 64
+	AbsentFingerprint   = "absent"
+	ConflictFingerprint = "conflict"
+	MaxObservedKeys     = 64
 )
 
 var ErrObservationLimit = errors.New("At most 64 comparisons can be checked at once; reduce the scope")
@@ -23,6 +24,7 @@ func Key(kind, path string) string { return kind + "\x00" + path }
 
 // Observe validates selected current comparisons against the supplied Status.
 // It never modifies review state. A missing slot returns AbsentFingerprint;
+// an ordinary comparison superseded by an index conflict returns ConflictFingerprint.
 // errors (including unsupported comparisons) return no partial result.
 // The caller controls the overall deadline via ctx.
 func Observe(ctx context.Context, repo *gitrepo.Repository, status gitrepo.Status, keys []string) (map[string]string, error) {
@@ -58,7 +60,14 @@ func Observe(ctx context.Context, repo *gitrepo.Repository, status gitrepo.Statu
 	}
 	for _, change := range status.Changes {
 		if change.Kind == gitrepo.Conflict && paths[change.Path] {
-			return nil, fmt.Errorf("%s: %w", change.Path, gitrepo.ErrConflict)
+			// The ordinary comparison has been replaced by a conflict. This is
+			// a known version change, not a failed check or an absent file.
+			for _, kind := range []gitrepo.Kind{gitrepo.Staged, gitrepo.Unstaged, gitrepo.Untracked} {
+				key := Key(string(kind), change.Path)
+				if _, requested := result[key]; requested {
+					result[key] = ConflictFingerprint
+				}
+			}
 		}
 		key := Key(string(change.Kind), change.Path)
 		if _, requested := result[key]; !requested {
@@ -68,7 +77,13 @@ func Observe(ctx context.Context, repo *gitrepo.Repository, status gitrepo.Statu
 			return nil, err
 		}
 		change.StatusToken = status.Token
-		comparison, err := repo.Compare(ctx, change)
+		var comparison gitrepo.Comparison
+		var err error
+		if change.Kind == gitrepo.Conflict {
+			comparison, err = repo.CompareConflict(ctx, change)
+		} else {
+			comparison, err = repo.Compare(ctx, change)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", change.Path, err)
 		}

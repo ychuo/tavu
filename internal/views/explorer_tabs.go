@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui/editor"
+	"tavu/internal/files"
 )
 
 // Explorer is an explicit request to keep a working file open. Quick Open and
@@ -19,9 +20,12 @@ func (a *App) openFileWithMode(path string, line int, replaceID string, preview 
 }
 
 type diskOpenRequest struct {
+	service         *files.Service
+	servicePath     string
 	path, replaceID string
 	line            int
 	preview         bool
+	navigate        bool
 	replaceBuffer   *editor.Buffer
 	replaceVersion  uint64
 }
@@ -30,7 +34,11 @@ type diskOpenRequest struct {
 // before the read starts, so a completion never pins whichever tab happens to be
 // selected later.
 func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
-	if a.fs == nil || a.loading {
+	service, sourcePath := a.fs, request.path
+	if request.service != nil {
+		service, sourcePath = request.service, request.servicePath
+	}
+	if service == nil || a.loading {
 		return
 	}
 	// A reload may be deliberately approved for a dirty buffer, but edits made
@@ -46,35 +54,45 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 		for _, d := range a.documents {
 			if d.Path == path && d.DiskHash != "" && d.Comparison == nil && !d.Replacement {
 				d.Preview = false
+				a.clearFileOpenError()
+				if request.navigate && request.line > 0 && d.Code != nil {
+					pos := d.Code.Buffer.Offset(editor.Pos{Line: request.line - 1})
+					d.Code.Select(pos, pos)
+				}
 				a.selectDocument(d.ID)
 				return
 			}
 		}
 	}
 	a.cancelDocumentLoad()
-	ctx, cancel := context.WithTimeout(a.projectCtx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(a.workspaceContext(), 10*time.Second)
 	a.loadCancel = cancel
-	id, fs := a.loadID, a.fs
+	id, fs := a.loadID, service
 	go func() {
 		defer cancel()
-		f, err := fs.Read(ctx, request.path)
+		f, err := fs.Read(ctx, sourcePath)
 		var editErr error
 		if err == nil {
 			editErr = fs.Editable(ctx, f.Path, f.Raw)
 		}
+		if request.service != nil {
+			f.Path = request.path
+		}
 		publish(func() {
 			a.completeDocumentLoad(id, func() {
 				if err != nil {
-					a.fail(err)
+					a.fileOpenError = a.tr("Could not open %s: %s", request.path, err.Error())
+					a.message = a.fileOpenError
 					return
 				}
+				a.clearFileOpenError()
 				if request.replaceID == "" {
 					for _, existing := range a.documents {
 						if existing.Path == f.Path && existing.DiskHash != "" && existing.Comparison == nil && !existing.Replacement {
 							if !request.preview {
 								existing.Preview = false
 							}
-							if request.preview && request.line > 0 && existing.Code != nil {
+							if (request.preview || request.navigate) && request.line > 0 && existing.Code != nil {
 								pos := existing.Code.Buffer.Offset(editor.Pos{Line: request.line - 1})
 								existing.Code.Select(pos, pos)
 							}
@@ -89,6 +107,7 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 					}
 				}
 				d := &document{ID: "disk:" + f.Path + ":" + f.Hash, Path: f.Path, Label: filepath.Base(request.path), Notice: "Working file", DiskHash: f.Hash, Preview: request.preview, Code: newCode(request.path, f.Raw)}
+				d.fileService, d.fileServicePath = request.service, request.servicePath
 				if editErr == nil {
 					d.Code.ReadOnly = false
 					d.FileEditable = true
@@ -111,4 +130,11 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 			})
 		})
 	}()
+}
+
+func (a *App) clearFileOpenError() {
+	if a.message == a.fileOpenError {
+		a.message = ""
+	}
+	a.fileOpenError = ""
 }

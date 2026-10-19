@@ -12,7 +12,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-![Tavu workspace with a file editor and terminal](docs/screenshots/workspace.png)
+![Tavu workspace with Git changes, code review, and a terminal](docs/screenshots/workspace.png)
 
 Tavu is a native macOS workspace for running your tools, editing files, and reviewing changes in one place. Written in Go with [MyGo](https://github.com/egoist/mygo).
 

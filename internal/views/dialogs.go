@@ -20,30 +20,13 @@ func (a *App) dialogs(c *ui.Context) {
 		tavuDialogField(c, ui.TextArea(c, &a.preview)).ReadOnly(true).Width(width).Height(height).Font("monospace").FontSize(12).Label(tr(c, "Comment Preview"))
 	}, func() {
 		tavuDialogButton(c, "Close", false).Label(tr(c, "Close Preview")).OnClick(func() { a.previewOpen = false })
+		a.commentPasteButton(c, a.selectedExportComments(), false)
 		if tavuDialogButton(c, "Copy", true).Label(tr(c, "Copy Comments")).Disabled(a.preview == "").Clicked() {
 			c.WriteClipboard(a.preview)
 			a.message = "Comments copied"
 		}
 	})
 	a.settingsPage(c)
-	renameTerminal := a.renameTerminalID != ""
-	tavuDialog(c.Key("rename-terminal"), &renameTerminal, "Rename Terminal", "Leave blank for the automatic name.", 460, 88, func(width, _ float32) {
-		tavuDialogField(c, ui.TextInput(c, &a.terminalNameDraft)).Label(tr(c, "Terminal Name")).Placeholder(tr(c, "e.g. Dev server")).Width(width).AutoFocus()
-	}, func() {
-		tavuDialogButton(c, "Cancel", false).OnClick(func() { a.renameTerminalID = ""; a.terminalNameDraft = "" })
-		tavuDialogButton(c, "Save", true).Label(tr(c, "Save Name")).Disabled(a.terms == nil).OnClick(func() {
-			if err := a.terms.RenameSession(a.renameTerminalID, a.terminalNameDraft); err != nil {
-				a.fail(err)
-				return
-			}
-			a.renameTerminalID = ""
-			a.terminalNameDraft = ""
-		})
-	})
-	if !renameTerminal {
-		a.renameTerminalID = ""
-		a.terminalNameDraft = ""
-	}
 	editing := a.editingComment != ""
 	tavuDialog(c.Key("edit-comment"), &editing, "Edit Comment", "Original code and location stay attached.", 580, 220, func(width, height float32) {
 		tavuDialogField(c, ui.TextArea(c, &a.commentEditDraft)).Width(width).Height(height).Label(tr(c, "Comment Text"))
@@ -68,7 +51,11 @@ func (a *App) dialogs(c *ui.Context) {
 		a.shutdown()
 	}
 	confirmingProject := a.confirmProject
-	closeProjectResult := ui.AlertDialog(c.Key("close-project"), &a.confirmProject, tr(c, "Close Project?"), tr(c, "Closes this project’s terminal sessions. Other projects stay open."), tr(c, "Cancel"), tr(c, "Close Project"))
+	closeTitle, closeDescription, closeAction := "Close Project?", "Closes this project’s terminal sessions. Other projects stay open.", "Close Project"
+	if a.pendingProject == standaloneWorkspaceKey {
+		closeTitle, closeDescription, closeAction = "Close Workspace?", "Closes this workspace’s terminal sessions. Other workspaces stay open.", "Close Workspace"
+	}
+	closeProjectResult := ui.AlertDialog(c.Key("close-project"), &a.confirmProject, tr(c, closeTitle), tr(c, closeDescription), tr(c, "Cancel"), tr(c, closeAction))
 	if closeProjectResult == 1 {
 		a.closeProjectNow(a.pendingProject)
 	} else if confirmingProject && !a.confirmProject {

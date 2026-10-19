@@ -32,7 +32,7 @@ func navigationMaxWidth(windowWidth float32) float32 {
 func (a *App) mainContentWidth(c *ui.Context) float32 {
 	w, _ := c.Size()
 	w -= 2 * workspaceInset
-	if a.sidebar {
+	if a.sidebar && !a.standalone {
 		w -= a.navigationWidth(c) + workspaceGap
 	}
 	return w

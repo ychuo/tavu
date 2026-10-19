@@ -62,7 +62,7 @@ func (a *App) watch(ctx context.Context, gen uint64, paths ...string) {
 	}
 }
 func (a *App) refresh() {
-	if a.fs == nil || a.projectCtx == nil || a.quitting || a.loading {
+	if (a.fs == nil && !a.standalone) || a.projectCtx == nil || a.quitting || a.loading {
 		return
 	}
 	if a.busy || a.fileBusy {
@@ -74,10 +74,20 @@ func (a *App) refresh() {
 		return
 	}
 	a.refreshing = true
-	repo, fs, ctx, gen := a.repo, a.fs, a.projectCtx, a.generation
+	repo, ctx, gen := a.repo, a.projectCtx, a.generation
 	epoch := a.statusEpoch
 	keys := a.observeKeys()
 	diskPaths := a.observedDiskPaths()
+	type diskRead struct {
+		service *files.Service
+		path    string
+	}
+	reads := map[string]diskRead{}
+	for _, d := range a.documents {
+		if service, path := a.documentFileService(d); service != nil {
+			reads[d.Path] = diskRead{service, path}
+		}
+	}
 	go func() {
 		query, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
@@ -93,7 +103,11 @@ func (a *App) refresh() {
 		}
 		disk := map[string]diskVersion{}
 		for _, path := range diskPaths {
-			f, e := fs.Read(query, path)
+			source, ok := reads[path]
+			if !ok {
+				continue
+			}
+			f, e := source.service.Read(query, source.path)
 			disk[path] = diskVersion{hash: f.Hash, err: e}
 		}
 		a.update(func() {
@@ -261,6 +275,7 @@ func (a *App) closeTerminal(id string) {
 	if m == nil {
 		return
 	}
+	a.forgetTerminalDrafts(m, id)
 	if a.activeTerm == id {
 		a.activeTerm = ""
 	}
@@ -278,6 +293,7 @@ func (a *App) closeTerminal(id string) {
 			a.fail(err)
 			a.reconcileTerminals(m.Sessions())
 			a.saveSettings()
+			a.finishEmptyStandalone()
 		})
 	}()
 }
@@ -299,7 +315,9 @@ func (a *App) reconcileTerminals(remaining []sessions.Session) {
 		a.secondTerm = ""
 	}
 	a.settings.Layout.SplitTerminals = a.activeTerm != "" && a.secondTerm != ""
-	if !available[a.termFocus] {
+	// An empty value means there is no pending terminal focus request. Do not
+	// turn routine reconciliation into a request that steals editor focus.
+	if a.termFocus != "" && !available[a.termFocus] {
 		a.termFocus = a.activeTerm
 	}
 }
@@ -331,8 +349,18 @@ func (a *App) rebuildRows() {
 	visit(".", 0)
 }
 func (a *App) toggleDir(path string) {
+	a.startDirectoryToggle(path, a.update)
+}
+
+func (a *App) startDirectoryToggle(path string, publish func(func())) {
 	if a.loading || a.fs == nil {
 		return
+	}
+	if a.expanded == nil {
+		a.expanded = map[string]bool{}
+	}
+	if a.treeLoading == nil {
+		a.treeLoading = map[string]bool{}
 	}
 	a.expanded[path] = !a.expanded[path]
 	if !a.expanded[path] {
@@ -346,7 +374,7 @@ func (a *App) toggleDir(path string) {
 	fs, ctx, gen := a.fs, a.projectCtx, a.generation
 	go func() {
 		items, err := fs.List(ctx, path)
-		a.update(func() {
+		publish(func() {
 			if gen != a.generation {
 				return
 			}
@@ -481,7 +509,7 @@ func (a *App) refreshCurrentDocument() {
 		if a.guardFileTransition("Reload file", []string{d.ID}, a.refreshCurrentDocument) {
 			return
 		}
-		a.openFileReplacing(d.Path, 1, d.ID)
+		a.startFileLoad(diskOpenRequest{path: d.Path, service: d.fileService, servicePath: d.fileServicePath, line: 1, replaceID: d.ID, preview: d.Preview}, a.update)
 		return
 	}
 	if a.guardReviewTransition("Reload review", []string{d.ID}, a.refreshCurrentDocument) {
@@ -653,12 +681,7 @@ func (a *App) decorate(d *document) {
 	}
 }
 func (a *App) prepareExport() {
-	var comments []review.Comment
-	for _, c := range a.state.Review.Comments {
-		if !c.Resolved && a.exportSelected[c.ID] {
-			comments = append(comments, c)
-		}
-	}
+	comments := a.selectedExportComments()
 	a.preview = review.Export(projectLabel(a.root), comments)
 	a.previewOpen = len(comments) > 0
 }

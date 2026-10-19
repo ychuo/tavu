@@ -22,6 +22,9 @@ import (
 )
 
 type document struct {
+	// Standalone files retain their own bounded disk service across workspace switches.
+	fileService     *files.Service
+	fileServicePath string
 	fileDocumentState
 	documentNoticeState
 	Continuous              *continuousReviewState
@@ -50,6 +53,9 @@ type treeRow struct {
 }
 
 type App struct {
+	projectHomeState
+	recentProjectState
+	standalone             bool
 	projects               map[string]*projectSessionState
 	projectOrder           []string
 	projectOpenID          uint64
@@ -69,6 +75,7 @@ type App struct {
 	settingsDraftOpen                       bool
 	settingsSection                         int
 	settingsQuery                           string
+	settingsShellError                      string
 	dataRoot                                string
 	writer                                  *persistqueue.Queue
 	projectCtx                              context.Context
@@ -89,6 +96,7 @@ type App struct {
 	snapshotCheckNotice                     string
 	busy, refreshing, refreshAgain, loading bool
 	message                                 string
+	fileOpenError                           string
 	terms                                   *sessions.Manager
 	activeTerm, secondTerm                  string
 	termFocus                               string
@@ -97,6 +105,11 @@ type App struct {
 	choosingProject                         bool
 	termStarting                            bool
 	renameTerminalID, terminalNameDraft     string
+	terminalRenameRoot                      string
+	terminalRenameManager                   *sessions.Manager
+	terminalRenameFocus                     bool
+	terminalCommentDrafts                   map[terminalDraftKey]string
+	terminalDraftFocus                      terminalDraftKey
 	mode                                    string
 	readerRatio, doubleRatio                float32
 	stackedRatio                            float32
@@ -257,7 +270,7 @@ func (a *App) Start(path string) {
 	// A plain launch is a genuine home screen. Recents remain available, but
 	// neither cwd nor the previous project implicitly creates a shell.
 	if path != "" {
-		a.openProject(path)
+		a.openHomePath(path)
 	}
 }
 func (a *App) current() *document {
@@ -305,6 +318,7 @@ func (a *App) saveSettings() {
 	a.settings.Layout.Arrangement = a.arrangement
 	s := a.settings
 	s.RecentProjects = append([]string(nil), s.RecentProjects...)
+	s.PinnedProjects = append([]string(nil), s.PinnedProjects...)
 	a.queue("settings", func() error { return a.store.SaveSettings(s) })
 }
 func (a *App) fail(err error) {
@@ -508,6 +522,7 @@ func (a *App) closeDocument(id string) {
 		}
 	}
 	a.reviewDocumentClosed(closed)
+	a.finishEmptyStandalone()
 }
 
 func (a *App) requestCloseDocument(id string) {

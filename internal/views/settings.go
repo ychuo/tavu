@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	sessions "tavu/internal/terminal"
 )
 
 var settingsCategories = []struct{ name, icon string }{
@@ -18,6 +19,7 @@ func (a *App) settingsPage(c *ui.Context) {
 	if a.settingsOpen && !a.settingsDraftOpen {
 		a.settingsDraft, a.settingsDraftOpen = a.settings, true
 		a.settingsQuery, a.settingsSection = "", 3
+		a.settingsShellError = ""
 	}
 	w, h := c.Size()
 	top := max(float32(44), c.TitleBar().Height) + 4
@@ -226,13 +228,23 @@ func (a *App) settingsTerminal(c *ui.Context, width float32) bool {
 				}
 				ui.Text(c, "tavu ~").Font(family).FontSize(a.settingsDraft.FontSize).TextColor(palette(c).accent).MaxWidth(width - 32)
 				ui.Text(c, "$ echo hello").Font(family).FontSize(a.settingsDraft.FontSize).MaxWidth(width - 32)
+				ui.Text(c, "中文 · 日本語 · → ✓ ≠ ≤ ≥ │ ─ 🙂").Font(family).FontSize(a.settingsDraft.FontSize).MaxWidth(width - 32)
+				ui.Text(c, "\ue0b0 \ue0a0 \uf07c \uf120").Font(family).FontSize(a.settingsDraft.FontSize).MaxWidth(width - 32).Tooltip(tr(c, "Prompt icons depend on the installed font"))
 			})
 		})
 	}
 	if shell {
 		settingsGroup(c, "Sessions", func() {
 			settingsRow(c, width, "Login shell", "Leave blank for your default shell. New sessions only.", func(w float32) {
-				tavuQuickPickerField(c, ui.TextInput(c.Key("settings-shell"), &a.settingsDraft.Shell)).Label(tr(c, "Shell Path")).Width(w).Placeholder(tr(c, "e.g. /bin/zsh"))
+				ui.Column(c).Width(w).Gap(6).Children(func() {
+					field := tavuQuickPickerField(c, ui.TextInput(c.Key("settings-shell"), &a.settingsDraft.Shell)).Label(tr(c, "Shell Path")).FillWidth().Placeholder(tr(c, "e.g. /bin/zsh"))
+					if field.Changed() {
+						a.settingsShellError = ""
+					}
+					if a.settingsShellError != "" {
+						ui.Text(c, a.settingsShellError).FontSize(12).TextColor(c.Theme().Danger).MaxWidth(w)
+					}
+				})
 			})
 		})
 	}
@@ -282,17 +294,20 @@ func (a *App) settingsFolders(c *ui.Context, width float32) bool {
 	}
 	ui.Column(c).FillWidth().Gap(4).Children(func() {
 		for _, path := range paths {
-			row := flatButton(c.Key(path), path).FillWidth().Padding(12).Radius(6).Gap(12).Justify(ui.Start).OnClick(func() {
-				a.settingsOpen = false
-				a.requestProject(path)
-			})
-			row.Children(func() {
-				glyph(c, "folder").TextColor(c.Theme().TextMuted)
-				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					ui.Text(c, filepath.Base(path)).FontSize(13).SingleLine()
-					ui.Text(c, path).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine().Tooltip(path).MaxWidth(width - 76)
+			ui.Row(c.Key(path)).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
+				row := flatButton(c, path).Grow(1).MinWidth(0).Padding(12).Radius(6).Gap(12).Justify(ui.Start).OnClick(func() {
+					a.settingsOpen = false
+					a.requestProject(path)
 				})
-				glyph(c, "chevron-right").FontSize(14).TextColor(c.Theme().TextMuted)
+				row.Children(func() {
+					glyph(c, "folder").TextColor(c.Theme().TextMuted)
+					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+						ui.Text(c, filepath.Base(path)).FontSize(13).SingleLine()
+						ui.Text(c, path).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine().Tooltip(path).MaxWidth(width - 76)
+					})
+					glyph(c, "chevron-right").FontSize(14).TextColor(c.Theme().TextMuted)
+				})
+				a.removeRecentProjectButton(c, path)
 			})
 		}
 		if len(paths) == 0 {
@@ -309,10 +324,17 @@ func (a *App) settingsDirty() bool {
 }
 
 func (a *App) applySettingsDraft() {
+	shell := strings.TrimSpace(a.settingsDraft.Shell)
+	if err := sessions.ValidateShell(shell); err != nil {
+		a.settingsShellError = a.tr("Shell is unavailable or not executable. Choose an executable path or leave it blank for the default shell.")
+		a.settingsSection, a.settingsQuery = 0, ""
+		return
+	}
+	a.settingsShellError = ""
 	// Merge only editable values; recent folders and workspace layout may have
 	// changed independently while the page was open.
 	a.settings.Theme, a.settings.Language = a.settingsDraft.Theme, a.settingsDraft.Language
-	a.settings.Shell = strings.TrimSpace(a.settingsDraft.Shell)
+	a.settings.Shell = shell
 	a.settings.FontFamily = strings.TrimSpace(a.settingsDraft.FontFamily)
 	a.settings.FontSize = a.settingsDraft.FontSize
 	a.saveSettings()

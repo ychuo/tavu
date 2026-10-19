@@ -12,14 +12,17 @@ import (
 
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(appTheme(resolvedThemeMode(a.settings.Theme, c.Theme().Dark)))
+	a.fileDragHover.seen = false
+	a.syncInlineFileAction()
 	a.syncFileDocuments()
+	a.validateTerminalRename()
 	a.workspaceShortcuts(c)
 	ui.Column(c).Fill().Background(palette(c).chrome).Children(func() {
 		a.header(c)
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(4, workspaceInset, 0, workspaceInset).Disabled(a.loading || a.quitting).Children(func() {
-			if a.root == "" {
+			if a.isProjectHome() {
 				a.projectHome(c)
-			} else if a.sidebar {
+			} else if a.sidebar && !a.standalone {
 				width := a.navigationWidth(c) + 3.5
 				if surfaceSplit(c.Key("sidebar-split"), false, &width, func() { a.sidebarView(c) }, func() { a.contentView(c) }).Fill().Changed() {
 					w, _ := c.Size()
@@ -34,6 +37,7 @@ func (a *App) View(c *ui.Context) {
 	})
 	a.dialogs(c)
 	a.quickOpenDialog(c)
+	a.finishExplorerDragHover(c, a.update)
 }
 
 func (a *App) contentView(c *ui.Context) {
@@ -74,7 +78,7 @@ func (a *App) header(c *ui.Context) {
 			toolToggle(c, "panel-left", "Toggle Sidebar", a.sidebar).Description(tr(c, "Toggle Sidebar · ⌘B")).OnClick(func() { a.sidebar = !a.sidebar; a.saveSettings() })
 		}
 		ui.Box(c).Grow(1).DragWindow()
-		if a.root == "" {
+		if a.isProjectHome() && len(a.projectTabs()) == 0 {
 			ui.Text(c, "tavu").FontSize(14).FontWeight(600).Absolute().Left(w/2 - 40).Top((max(44, bar.Height) - 24) / 2).Width(80).Height(24).TextAlign(ui.Center).DragWindow()
 		} else {
 			width := projectStripWidth(w, bar.Left, bar.Right)
@@ -82,16 +86,22 @@ func (a *App) header(c *ui.Context) {
 				a.projectTabStrip(c, width)
 			})
 		}
-		if a.root != "" {
+		if !a.isProjectHome() {
 			mode := a.effectivePaneMode()
 			if a.terms == nil || len(a.terms.Sessions()) == 0 {
-				toolButton(c, "terminal", "New Terminal").Disabled(a.termStarting || a.terms == nil).OnClick(func() { a.newTerminal(false) })
+				toolButton(c, "terminal", "New Terminal").Disabled(a.termStarting).OnClick(a.newWorkspaceTerminal)
 			} else {
 				toolToggle(c, "terminal", "Maximize Terminal", !a.settingsOpen && mode == "terminal").OnClick(func() { a.setMode("terminal") })
 			}
 			toolToggle(c, "rows-2", "Split View", !a.settingsOpen && mode == "split").Description(tr(c, "Split View · Right-click for layout")).Disabled(a.current() == nil || a.terms == nil || len(a.terms.Sessions()) == 0).OnClick(func() { a.setMode("split") }).ContextMenu(a.arrangementMenu)
 			if a.current() == nil {
-				toolButton(c, "files", "Open File…").Disabled(a.fs == nil).OnClick(a.openQuickOpen)
+				toolButton(c, "files", "Open File…").OnClick(func() {
+					if a.standalone {
+						a.chooseHomeFile()
+					} else {
+						a.openQuickOpen()
+					}
+				})
 			} else {
 				toolToggle(c, "files", "Maximize Reader", !a.settingsOpen && mode == "review").OnClick(func() { a.setMode("review") })
 			}
@@ -140,6 +150,7 @@ func (a *App) sidebarView(c *ui.Context) {
 				tab         int
 			}{{"files", "Explorer", 0}, {"search", "Search", 2}, {"git-branch", "Source Control", 1}} {
 				toolToggle(c, item.icon, item.label, a.sidebarTab == item.tab).Size(32, 32).OnClick(func() {
+					a.cancelInlineFileAction()
 					if item.tab == 2 {
 						a.openSearch()
 					} else {
@@ -178,11 +189,12 @@ func (a *App) sidebarView(c *ui.Context) {
 }
 
 func (a *App) filesView(c *ui.Context) {
-	ui.Row(c).Padding(0, 14).Height(36).FillWidth().Gap(2).AlignItems(ui.Center).Children(func() {
+	rootRow := ui.Row(c).Padding(0, 14).Height(36).FillWidth().Gap(2).AlignItems(ui.Center).Label(tr(c, "Project Folder")).Children(func() {
 		glyph(c, "folder").FontSize(14).TextColor(c.Theme().TextMuted)
 		ui.Text(c, projectLabel(a.root)).FontSize(13).SingleLine().Grow(1).MinWidth(0)
 		a.explorerFileActions(c)
 	})
+	a.explorerDropTarget(c, rootRow, ".")
 	a.listState.Key = func(i int) any { return a.rows[i].Entry.Path }
 	if a.revealPath != "" {
 		for i, row := range a.rows {
@@ -207,27 +219,47 @@ func (a *App) filesView(c *ui.Context) {
 }
 
 func (a *App) fileRow(c *ui.Context, path, label string, depth int, dir, symlink, blocked bool, action func()) {
-	selected := a.current() != nil && a.current().Path == path && !dir
-	b := flatButton(c.Key(path), path).Label(path).Height(28).FillWidth().Padding(0, 8, 0, float32(8+depth*14)).Radius(5).Tooltip(path).Disabled(blocked).Selected(selected)
-	if selected {
-		b.Background(palette(c).activeFill).TextColor(c.Theme().Text)
+	if a.fileActionInline && a.fileAction == "Rename" && a.fileActionPath == path {
+		a.inlineFileName(c, path, depth, dir)
+		return
 	}
-	b.Children(func() {
-		if dir {
-			name := "chevron-right"
-			if a.expanded[path] {
-				name = "chevron-down"
+	ui.Column(c.Key("entry-" + path)).FillWidth().Children(func() {
+		selected := a.current() != nil && a.current().Path == path && !dir
+		b := flatButton(c.Key(path), path).Label(path).Height(28).FillWidth().Padding(0, 8, 0, float32(8+depth*14)).Radius(5).Tooltip(path).Disabled(blocked).Selected(selected)
+		if selected {
+			b.Background(palette(c).activeFill).TextColor(c.Theme().Text)
+		}
+		b.Children(func() {
+			if dir {
+				name := "chevron-right"
+				if a.expanded[path] {
+					name = "chevron-down"
+				}
+				glyph(c, name).FontSize(11).TextColor(c.Theme().TextMuted)
+			} else {
+				ui.Box(c).Width(11)
 			}
-			glyph(c, name).FontSize(11).TextColor(c.Theme().TextMuted)
-		} else {
-			ui.Box(c).Width(11)
+			fileGlyph(c, path, dir, a.expanded[path])
+			ui.Text(c, label).SingleLine().MinWidth(0).Grow(1).FontSize(13)
+			if symlink {
+				glyph(c, "arrow-up-right").FontSize(11).TextColor(c.Theme().TextMuted)
+			}
+		}).OnClick(action).ContextMenu(func(m *ui.Menu) { a.fileMenu(m, path, dir) })
+		if !blocked && !symlink && !a.fileActionsDisabled() {
+			candidate := explorerFileDrag{root: a.root, generation: a.generation, path: path, directory: dir}
+			payload := ui.Local(b, "file-drag", func() explorerFileDrag { return candidate })
+			// Keep the origin fixed for this gesture, even if the same tree row
+			// is reused after switching projects while the pointer is held.
+			if !b.Dragging() {
+				*payload = candidate
+			}
+			b.Drag(*payload)
+			if dir {
+				a.explorerDropTarget(c, b, path)
+			}
 		}
-		fileGlyph(c, path, dir, a.expanded[path])
-		ui.Text(c, label).SingleLine().MinWidth(0).Grow(1).FontSize(13)
-		if symlink {
-			glyph(c, "arrow-up-right").FontSize(11).TextColor(c.Theme().TextMuted)
-		}
-	}).OnClick(action).ContextMenu(func(m *ui.Menu) { a.fileMenu(m, path, dir) })
+		a.inlineFileError(c, path, depth)
+	})
 }
 
 type changeItem struct {
@@ -237,6 +269,18 @@ type changeItem struct {
 }
 
 func (a *App) changesView(c *ui.Context) {
+	if a.repo == nil && a.snapshot == nil {
+		ui.Column(c).Fill().Padding(28, 16).Gap(12).AlignItems(ui.Center).Children(func() {
+			glyph(c, "git-branch").FontSize(25).TextColor(c.Theme().TextMuted)
+			ui.Text(c, tr(c, "This folder is not using Git yet")).FontSize(13).TextAlign(ui.Center)
+			ui.Text(c, tr(c, "Your files and terminals are ready to use.")).FontSize(12).TextColor(c.Theme().TextMuted).TextAlign(ui.Center)
+			a.gitInitializeView(c)
+			if a.gitNotice != "" {
+				ui.Text(c, a.gitNotice).FontSize(12).TextColor(c.Theme().Danger).FillWidth()
+			}
+		})
+		return
+	}
 	if a.snapshot == nil {
 		a.reviewTab = 0
 	}
@@ -465,7 +509,12 @@ func (a *App) terminalView(c *ui.Context) {
 							if s.Exited {
 								label += tr(c, " [Exited: %d]", s.ExitCode)
 							}
+							if a.renameTerminalID == s.ID {
+								a.terminalRenameTab(c, s, label)
+								continue
+							}
 							tab := a.tab(c, s.ID, "terminal", label, s.Title, false, a.activeTerm == s.ID, func() {
+								a.cancelTerminalRename()
 								if s.ID == a.secondTerm {
 									a.secondTerm = a.activeTerm
 								}
@@ -474,8 +523,7 @@ func (a *App) terminalView(c *ui.Context) {
 								a.focusTerminal()
 							}, func() { a.requestCloseTerminal(s.ID) }, tr(c, "Close Terminal %s", s.ID)).ContextMenu(func(m *ui.Menu) {
 								if m.Item(a.tr("Rename Terminal…")).Chosen() {
-									a.renameTerminalID = s.ID
-									a.terminalNameDraft = s.CustomLabel
+									a.beginTerminalRename(s)
 								}
 							})
 							if revealTab && a.activeTerm == s.ID {
@@ -526,10 +574,16 @@ func (a *App) terminalView(c *ui.Context) {
 func (a *App) showTerminal(c *ui.Context, id string) {
 	for _, s := range a.terms.Sessions() {
 		if s.ID == id {
-			ui.Box(c.Key("terminal-content:"+s.ID)).Fill().MinHeight(0).Padding(4, 6, 6, 6).Children(func() {
+			body := ui.Column(c.Key("terminal-content:"+s.ID)).Label(tr(c, "Terminal Drop Target %s", s.ID)).Fill().MinHeight(0).Padding(4, 6, 6, 6).Border(2, ui.Transparent)
+			over := a.terminalCommentDrop(c, body, s.ID)
+			body.Children(func() {
+				if over {
+					ui.Text(c, tr(c, "Drop to paste into %s · Enter is not sent", a.terminalLabel(s.ID))).FontSize(12).TextColor(palette(c).accent).Padding(4, 6)
+				}
+				a.terminalCommentDraft(c, s)
 				e := terminal.View(c.Key(s.ID), s.Term).Fill()
 				a.trackPaneFocus(e, "terminal", s.ID)
-				if a.termFocus == id {
+				if a.termFocus == id && a.renameTerminalID == "" {
 					e.Focus()
 					a.termFocus = ""
 				}

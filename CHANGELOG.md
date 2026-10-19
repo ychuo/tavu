@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.3 — 2026-10-19
+
+- Sort folders before files throughout the file tree, with case-insensitive alphabetical ordering within each group.
+- Use a native macOS application icon with a full green background, removing the extra inset border while preserving the monkey mascot.
+- Require Xcode 26 or later when packaging the native macOS icon, and verify that the compiled icon catalog is present.
+
 ## v0.1.2 — 2026-10-19
 
 - Add Markdown source/preview switching that preserves unsaved edits and renders supported local images.

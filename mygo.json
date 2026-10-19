@@ -4,6 +4,7 @@
   "version": "0.1.2",
   "out": "build",
   "macos": {
+    "icon": "resources/Tavu.icon",
     "minimumSystemVersion": "13.0",
     "infoPlist": {
       "CFBundleDevelopmentRegion": "en",

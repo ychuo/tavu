@@ -20,7 +20,7 @@ import (
 
 const modulePath = "github.com/egoist/mygo"
 const moduleVersion = "v0.5.5"
-const patchVersion = "diff-wheel-v1"
+const patchVersion = "diff-wheel-magnify-v2"
 
 type patchSpec struct {
 	Path, SHA256 string
@@ -30,6 +30,11 @@ type patchSpec struct {
 var sourceSpecs = []patchSpec{
 	{"ui/editor/diffparts.go", "b01c114bafa0e1fdd5b5cbecc81e248d5338fd615aa73696894ec1a31cd39744", 1},
 	{"ui/editor/diffside.go", "7fb3f8dbf2189cf4b32f01f4524933ee555244d322f1aa4d191e0c2bb4a8fe7f", 3},
+	{"internal/platform/surface.go", "d1e06b3e90e0a700ef5ade30f5ffacc9251aa93c2b889f336f4b87496f77eff2", 1},
+	{"internal/darwin/surface.go", "04a8c61e750bead052eca0a1be5040631e3620d6890422cccfb4638f5d6801e7", 1},
+	{"ui/handler.go", "0c16218e5a8ff206e2352cc1f5f3ef897a0d4bdeade0bc6e7907520383d91285", 1},
+	{"ui/input.go", "42710f94ce9522a9e5f26f2f16535a87fa560e513f34c81bbe124fc52d3d5c2f", 1},
+	{"ui/headless.go", "fe5b7bb9e3be176a41086c966fb7bf45e69edad824cb46f64e6dfaf80cfa9c52", 1},
 }
 
 const overlayInput = `
@@ -121,6 +126,9 @@ func patchedSource(data []byte, spec patchSpec) ([]byte, error) {
 	if digest(data) != spec.SHA256 {
 		return nil, fmt.Errorf("%s source SHA-256 differs from pinned %s; refusing to patch", spec.Path, moduleVersion)
 	}
+	if spec.Path != "ui/editor/diffparts.go" && spec.Path != "ui/editor/diffside.go" {
+		return patchMagnify(data, spec)
+	}
 	const before, after = "HandleInput(shield)", "HandleInput(ed.diffOverlayInput)"
 	if strings.Count(string(data), before) != spec.Count {
 		return nil, fmt.Errorf("%s: expected %d wheel shields", spec.Path, spec.Count)
@@ -159,7 +167,7 @@ func prepare(root, source string, specs []patchSpec) (string, error) {
 	key := digest(append(append(identity, mod...), sum...))[:20]
 	base := filepath.Join(root, "build", "mygo-patch")
 	target := filepath.Join(base, key)
-	mod = append(mod, []byte("\n// Local, verified build-only MyGo wheel fix.\nreplace "+modulePath+" => "+strconv.Quote(filepath.Join(target, "mygo"))+"\n")...)
+	mod = append(mod, []byte("\n// Local, verified build-only MyGo input fixes.\nreplace "+modulePath+" => "+strconv.Quote(filepath.Join(target, "mygo"))+"\n")...)
 	meta.ModSHA256, meta.SumSHA256 = digest(mod), digest(sum)
 	if validPrepared(target, meta) {
 		return filepath.Join(target, "patched.mod"), nil

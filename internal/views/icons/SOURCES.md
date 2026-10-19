@@ -1,5 +1,7 @@
 # Lucide SVG icons
 
+`image-fit.svg` is original Tavu artwork (a picture inside viewport corners), not part of the upstream Lucide set below.
+
 Source: https://github.com/lucide-icons/lucide
 Version: 0.468.0
 Commit: f12b0de177fbc2a6795e99be065887e72b237123

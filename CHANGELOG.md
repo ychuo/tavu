@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.2 — 2026-10-19
+
+- Add Markdown source/preview switching that preserves unsaved edits and renders supported local images.
+- Open PNG, JPEG, GIF, WebP, BMP, and SVG files in a native image viewer with a Fit icon, 100%, zoom controls, and macOS trackpad pinch zoom. SVG source remains editable.
+- Keep the image point under the pointer stable while zooming, preserve two-finger panning, and restore centering with Fit.
+
 ## v0.1.1 — 2026-10-19
 
 - Add a centered two-column home with quick folder, terminal, and file entry points, plus pinned projects and searchable recents. Only the project list scrolls in the wide layout.

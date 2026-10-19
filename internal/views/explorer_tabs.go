@@ -56,6 +56,7 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 				d.Preview = false
 				a.clearFileOpenError()
 				if request.navigate && request.line > 0 && d.Code != nil {
+					d.renderPreview = false
 					pos := d.Code.Buffer.Offset(editor.Pos{Line: request.line - 1})
 					d.Code.Select(pos, pos)
 				}
@@ -70,9 +71,17 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 	id, fs := a.loadID, service
 	go func() {
 		defer cancel()
-		f, err := fs.Read(ctx, sourcePath)
+		f, err := fs.ReadPreview(ctx, sourcePath)
+		var picture *fileImage
+		var previewErr error
+		if err == nil && f.Kind != files.PreviewText {
+			picture, err = loadFileImage(f)
+			if err != nil && f.Kind == files.PreviewSVG {
+				previewErr, err = err, nil // Broken SVG can still be repaired in source mode.
+			}
+		}
 		var editErr error
-		if err == nil {
+		if err == nil && f.Kind != files.PreviewImage {
 			editErr = fs.Editable(ctx, f.Path, f.Raw)
 		}
 		if request.service != nil {
@@ -93,6 +102,9 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 								existing.Preview = false
 							}
 							if (request.preview || request.navigate) && request.line > 0 && existing.Code != nil {
+								if request.navigate {
+									existing.renderPreview = false
+								}
 								pos := existing.Code.Buffer.Offset(editor.Pos{Line: request.line - 1})
 								existing.Code.Select(pos, pos)
 							}
@@ -106,23 +118,38 @@ func (a *App) startFileLoad(request diskOpenRequest, publish func(func())) {
 						return
 					}
 				}
-				d := &document{ID: "disk:" + f.Path + ":" + f.Hash, Path: f.Path, Label: filepath.Base(request.path), Notice: "Working file", DiskHash: f.Hash, Preview: request.preview, Code: newCode(request.path, f.Raw)}
+				d := &document{ID: "disk:" + f.Path + ":" + f.Hash, Path: f.Path, Label: filepath.Base(request.path), Notice: "Working file", DiskHash: f.Hash, Preview: request.preview}
 				d.fileService, d.fileServicePath = request.service, request.servicePath
-				if editErr == nil {
+				d.image = picture
+				d.renderPreview = picture != nil
+				if f.Kind != files.PreviewImage {
+					d.Code = newCode(request.path, f.Raw)
+					d.imageVersion = d.Code.Buffer.Version()
+				}
+				if previewErr != nil {
+					d.imageError = previewErr.Error()
+				}
+				if d.Code != nil && editErr == nil {
 					d.Code.ReadOnly = false
 					d.FileEditable = true
 					d.fileSavedText = d.Code.Buffer.String()
 					d.fileObservedVersion = d.Code.Buffer.Version()
-				} else {
+				} else if d.Code != nil {
 					d.readOnlyReason = editErr.Error()
 					d.setNotice(noticeMessage("Read-only · %s", d.readOnlyReason))
 					d.VersionNotice = "Read-only"
 				}
-				if request.line > 0 {
+				if request.line > 0 && d.Code != nil {
+					if request.navigate {
+						d.renderPreview = false
+					}
 					pos := d.Code.Buffer.Offset(editor.Pos{Line: request.line - 1})
 					d.Code.Select(pos, pos)
 				}
 				if request.replaceID != "" {
+					if existing := a.fileDocument(request.replaceID); existing != nil && d.isMarkdown() {
+						d.renderPreview = existing.renderPreview
+					}
 					a.replaceDocument(request.replaceID, d)
 				} else {
 					a.addDocument(d)

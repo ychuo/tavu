@@ -30,6 +30,9 @@ type fileWorkspaceState struct {
 	fileActionError        string
 	fileActionDirectory    bool
 	fileActionDocumentID   string
+	fileActionInline       bool
+	fileActionFocus        bool
+	fileDragHover          explorerFolderHover
 	fileGuardOpen          bool
 	fileGuardLabel         string
 	fileGuardIDs           []string
@@ -62,7 +65,7 @@ func (a *App) syncFileDocuments() {
 }
 
 func (a *App) fileActionsDisabled() bool {
-	return a.fs == nil || a.fileBusy || a.busy || a.loading || a.quitting
+	return (a.fs == nil && !a.standalone) || a.fileBusy || a.busy || a.loading || a.quitting
 }
 
 func (a *App) fileDocument(id string) *document {
@@ -143,10 +146,17 @@ func (a *App) discardFileGuard() {
 }
 
 func (a *App) cancelFileGuard() {
+	root, closingFile := a.root, a.fileGuardLabel == "Close file"
 	a.cancelProjectClose()
 	a.fileGuardOpen = false
 	a.fileGuardIDs = nil
 	a.fileGuardProceed = nil
+	if closingFile && a.root == root && a.current() != nil {
+		a.readerFocus, a.termFocus = true, ""
+	}
+	if a.fileActionInline && a.fileAction == "Duplicate" {
+		a.cancelInlineFileAction()
+	}
 }
 
 func (a *App) saveCurrentFile() {
@@ -158,6 +168,7 @@ func (a *App) saveCurrentFile() {
 func (a *App) saveAllFiles() { a.saveFileDocuments(a.dirtyFileIDs(nil), nil) }
 
 type workingFileSave struct {
+	service              *files.Service
 	id, path, hash, text string
 	raw                  []byte
 	version              uint64
@@ -190,7 +201,11 @@ func (a *App) startFileSaves(ids []string, done func(), publish func(func())) {
 			a.fail(err)
 			return
 		}
-		requests = append(requests, workingFileSave{id: id, path: d.Path, hash: d.DiskHash, text: snapshot.String(), raw: raw.Bytes(), version: snapshot.Version()})
+		service, path := a.documentFileService(d)
+		if service == nil {
+			continue
+		}
+		requests = append(requests, workingFileSave{service: service, id: id, path: path, hash: d.DiskHash, text: snapshot.String(), raw: raw.Bytes(), version: snapshot.Version()})
 	}
 	if len(requests) == 0 {
 		if done != nil {
@@ -203,7 +218,7 @@ func (a *App) startFileSaves(ids []string, done func(), publish func(func())) {
 	for _, request := range requests {
 		a.fileDocument(request.id).FileSaving = true
 	}
-	service, generation := a.fs, a.generation
+	generation := a.generation
 	ctx := a.projectCtx
 	if ctx == nil {
 		ctx = context.Background()
@@ -213,7 +228,7 @@ func (a *App) startFileSaves(ids []string, done func(), publish func(func())) {
 		defer cancel()
 		results := make([]workingFileSaveResult, 0, len(requests))
 		for _, request := range requests {
-			saved, err := service.Save(ctx, request.path, request.raw, request.hash)
+			saved, err := request.service.Save(ctx, request.path, request.raw, request.hash)
 			results = append(results, workingFileSaveResult{request: request, saved: saved, err: err})
 			if err != nil {
 				break
@@ -272,13 +287,14 @@ func (a *App) startFileSaves(ids []string, done func(), publish func(func())) {
 
 func (a *App) openFileConflict(id string) {
 	d := a.fileDocument(id)
-	if d == nil || a.fs == nil {
+	service, path := a.documentFileService(d)
+	if d == nil || service == nil {
 		return
 	}
 	a.fileConflictID = id
 	a.fileConflictDisk = nil
 	a.fileConflictError = ""
-	service, generation, path := a.fs, a.generation, d.Path
+	generation := a.generation
 	ctx := a.projectCtx
 	if ctx == nil {
 		ctx = context.Background()
@@ -377,7 +393,7 @@ func (a *App) fileOperationIDs(path string) []string {
 
 func duplicateFileName(path string, directory bool) string {
 	ext := ""
-	if !directory {
+	if !directory && strings.LastIndexByte(filepath.Base(path), '.') > 0 {
 		ext = filepath.Ext(path)
 	}
 	return strings.TrimSuffix(path, ext) + " copy" + ext

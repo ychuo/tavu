@@ -17,7 +17,7 @@ func (a *App) workspaceShortcuts(c *ui.Context) {
 	bind(ui.Cmd, ui.KeyS, a.saveCurrentFile)
 	bind(ui.Cmd|ui.Shift, ui.KeyS, a.saveAllFiles)
 	bind(ui.Cmd|ui.Shift, ui.KeyF, a.openSearch)
-	bind(ui.Cmd|ui.Shift, ui.KeyT, func() { a.newTerminal(false) })
+	bind(ui.Cmd|ui.Shift, ui.KeyT, a.newWorkspaceTerminal)
 	bind(ui.Cmd|ui.Shift, ui.KeyR, a.refresh)
 	bind(ui.Cmd|ui.Shift, ui.KeyJ, a.focusTerminal)
 	bind(ui.Cmd|ui.Shift, ui.KeyE, a.focusReader)
@@ -29,14 +29,14 @@ func (a *App) workspaceModalOpen() bool {
 }
 
 func (a *App) runWorkspaceAction(action func()) {
-	if a.workspaceModalOpen() || a.loading || a.quitting {
+	if a.workspaceModalOpen() || a.inlineFileRenameVisible() || a.loading || a.quitting {
 		return
 	}
 	action()
 }
 
 func (a *App) openSearch() {
-	if a.workspaceModalOpen() || a.loading || a.quitting {
+	if a.root == "" || a.workspaceModalOpen() || a.loading || a.quitting {
 		return
 	}
 	a.cancelDocumentLoad()

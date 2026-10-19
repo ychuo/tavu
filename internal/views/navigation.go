@@ -22,8 +22,11 @@ func (a *App) Menu() *mygo.Menu {
 		{Role: mygo.RoleAppMenu},
 		{Label: a.tr("File"), Submenu: []*mygo.MenuItem{
 			item("Open Folder…", "CmdOrCtrl+O", a.chooseProject),
+			item("Open File…", "", a.chooseHomeFile),
+			item("New Terminal", "CmdOrCtrl+Shift+T", a.newWorkspaceTerminal),
 			item("Quick Open…", "CmdOrCtrl+P", a.openQuickOpen),
 			item("Save", "CmdOrCtrl+S", a.saveCurrentFile),
+			item("Save As…", "", a.saveCurrentFileAs),
 			item("Save All", "CmdOrCtrl+Shift+S", a.saveAllFiles),
 			item("Close Tab", "CmdOrCtrl+W", a.closeActiveTab),
 		}},
@@ -240,6 +243,9 @@ func terminalTabLabel(index int, session sessions.Session, root string) string {
 	name := session.CustomLabel
 	if name == "" {
 		name = projectLabel(root)
+		if root == "" {
+			name = "~"
+		}
 	}
 	return fmt.Sprintf("%d · %s", index+1, name)
 }

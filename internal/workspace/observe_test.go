@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,8 +126,66 @@ func TestObserveConflictDoesNotMasqueradeAsAbsentUnstagedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observed, err := Observe(ctx, repo, status, []string{Key("unstaged", "file")})
-	if !errors.Is(err, gitrepo.ErrConflict) || observed != nil {
+	key, conflictKey := Key("unstaged", "file"), Key("conflict", "file")
+	observed, err := Observe(ctx, repo, status, []string{key, conflictKey})
+	if err != nil || observed[key] != ConflictFingerprint {
 		t.Fatalf("conflict masqueraded as absence: %#v, %v", observed, err)
+	}
+	comparison, err := repo.CompareConflict(ctx, gitrepo.Change{Path: "file", StatusToken: status.Token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := observedComparison(comparison).Fingerprint()
+	if observed[conflictKey] != want {
+		t.Fatalf("displayed and observed conflict sides disagree: %v", observed)
+	}
+
+	// Resolving the working result and changing an unrelated path cannot make
+	// the unchanged current/incoming index versions look stale.
+	snapshotWrite(t, repo.Root, "file", []byte("resolved working result\n"))
+	snapshotWrite(t, repo.Root, "unrelated", []byte("new file\n"))
+	status, err = repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err = Observe(ctx, repo, status, []string{conflictKey})
+	if err != nil || observed[conflictKey] != want {
+		t.Fatalf("working result edit invalidated unchanged conflict sides: %v, %v", observed, err)
+	}
+	snapshotWrite(t, repo.Root, "file", []byte(strings.Repeat("large result\n", 500_000)))
+	status, err = repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err = Observe(ctx, repo, status, []string{conflictKey})
+	if err != nil || observed[conflictKey] != want {
+		t.Fatalf("large working result blocked a bounded index-side comparison: %v, %v", observed, err)
+	}
+	snapshotWrite(t, repo.Root, "file", []byte("resolved working result\n"))
+
+	// An actual incoming-stage replacement does change the displayed version.
+	snapshotWrite(t, repo.Root, "new-side", []byte("changed incoming\n"))
+	oid := snapshotGit(t, repo.Root, "hash-object", "-w", "new-side")
+	command := exec.CommandContext(ctx, "git", "-C", repo.Root, "update-index", "--index-info")
+	command.Stdin = strings.NewReader("100644 " + oid + " 3\tfile\n")
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("replace incoming index stage: %s, %v", out, err)
+	}
+	status, err = repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err = Observe(ctx, repo, status, []string{conflictKey})
+	if err != nil || observed[conflictKey] == want || observed[conflictKey] == AbsentFingerprint {
+		t.Fatalf("changed conflict index stage was not detected: %v, %v", observed, err)
+	}
+	snapshotGit(t, repo.Root, "add", "file")
+	status, err = repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err = Observe(ctx, repo, status, []string{conflictKey})
+	if err != nil || observed[conflictKey] != AbsentFingerprint {
+		t.Fatalf("resolved conflict was not recognized: %v, %v", observed, err)
 	}
 }

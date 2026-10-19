@@ -13,7 +13,7 @@ func projectStripWidth(window, left, right float32) float32 {
 // Keep the selected project visible at every width; overflow stays in a menu,
 // never wraps into a second title-bar row or pushes the window controls away.
 func visibleProjectTabs(tabs []projectTab, current string, width float32) []projectTab {
-	capacity := max(1, int((width-64)/124))
+	capacity := max(1, int((width-94)/124))
 	if len(tabs) <= capacity {
 		return tabs
 	}
@@ -30,10 +30,10 @@ func visibleProjectTabs(tabs []projectTab, current string, width float32) []proj
 
 func (a *App) projectTabStrip(c *ui.Context, width float32) {
 	tabs := a.projectTabs()
-	visible := visibleProjectTabs(tabs, a.root, width)
-	tabWidth := min(float32(174), (width-64)/float32(max(1, len(visible)))-4)
+	visible := visibleProjectTabs(tabs, a.workspaceKey(), width)
+	tabWidth := min(float32(174), (width-94)/float32(max(1, len(visible)))-4)
 	for _, item := range visible {
-		selected := item.Root == a.root
+		selected := item.Root == a.workspaceKey()
 		row := ui.Row(c.Key("project:" + item.Root)).Height(30).Width(tabWidth).Radius(5).AlignItems(ui.Center)
 		background := palette(c).chrome
 		if selected {
@@ -42,8 +42,12 @@ func (a *App) projectTabStrip(c *ui.Context, width float32) {
 			background = c.Theme().SurfaceHover
 		}
 		row.Background(background).Children(func() {
-			body := ui.ButtonBase(c.Key("project-select")).Label(tr(c, "Open Project %s", item.Root)).Selected(selected).Fill().Padding(0, 10).Gap(7).AlignItems(ui.Center).Radius(5).Tooltip(item.Root).OnClick(func() { a.requestProject(item.Root) }).Children(func() {
-				glyph(c, "folder").FontSize(13).TextColor(c.Theme().TextMuted)
+			body := ui.ButtonBase(c.Key("project-select")).Label(tr(c, "Open Project %s", item.Root)).Selected(selected).Fill().Padding(0, 10).Gap(7).AlignItems(ui.Center).Radius(5).Tooltip(item.Label).OnClick(func() { a.requestProject(item.Root) }).Children(func() {
+				icon := "folder"
+				if item.Root == standaloneWorkspaceKey {
+					icon = "terminal"
+				}
+				glyph(c, icon).FontSize(13).TextColor(c.Theme().TextMuted)
 				ui.Text(c, projectTabTitle(item, tabs)).FontSize(12).SingleLine().MinWidth(0).Grow(1)
 				if item.Dirty {
 					ui.Box(c).Size(4, 4).Radius(2).Background(palette(c).accent).Label(tr(c, "Unsaved changes"))
@@ -55,12 +59,17 @@ func (a *App) projectTabStrip(c *ui.Context, width float32) {
 			}
 		})
 	}
+	toolButton(c, "house", "Home").Size(26, 28).OnClick(a.showProjectHome)
 	toolButton(c, "plus", "Open Folder…").Size(26, 28).OnClick(a.chooseProject)
 	toolButton(c, "chevron-down", "Switch Project").Size(26, 28).Menu(func(m *ui.Menu) {
 		opened := map[string]bool{}
 		for _, item := range tabs {
 			opened[item.Root] = true
-			if m.Item(item.Label + "  ·  " + displayProjectPath(item.Root)).Checked(item.Root == a.root).Chosen() {
+			label := item.Label + "  ·  " + displayProjectPath(item.Root)
+			if item.Root == standaloneWorkspaceKey {
+				label = item.Label
+			}
+			if m.Item(label).Checked(item.Root == a.workspaceKey()).Chosen() {
 				a.requestProject(item.Root)
 			}
 		}
